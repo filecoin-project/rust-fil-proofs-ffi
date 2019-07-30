@@ -71,12 +71,11 @@ pub unsafe extern "C" fn verify_seal(
 #[no_mangle]
 pub unsafe extern "C" fn verify_post(
     sector_size: u64,
-    proof_partitions: u8,
     flattened_comm_rs_ptr: *const u8,
     flattened_comm_rs_len: libc::size_t,
     challenge_seed: &[u8; 32],
-    flattened_proofs_ptr: *const u8,
-    flattened_proofs_len: libc::size_t,
+    proofs_ptr: *const u8,
+    proofs_len: libc::size_t,
     faults_ptr: *const u64,
     faults_len: libc::size_t,
 ) -> *mut VerifyPoStResponse {
@@ -84,33 +83,22 @@ pub unsafe extern "C" fn verify_post(
 
     info!("verify_post: start");
 
-    let post_bytes = helpers::try_into_post_proofs_bytes(
-        proof_partitions,
-        flattened_proofs_ptr,
-        flattened_proofs_len,
+    let cfg = api_types::PoStConfig(api_types::SectorSize(sector_size));
+
+    let result = api_fns::verify_post(
+        cfg,
+        helpers::into_commitments(flattened_comm_rs_ptr, flattened_comm_rs_len),
+        challenge_seed,
+        from_raw_parts(proofs_ptr, proofs_len),
+        from_raw_parts(faults_ptr, faults_len),
     );
-
-    let result = post_bytes.and_then(|bs| {
-        let cfg = api_types::PoStConfig(
-            api_types::SectorSize(sector_size),
-            api_types::PoStProofPartitions(proof_partitions),
-        );
-
-        api_fns::verify_post(
-            cfg,
-            helpers::into_commitments(flattened_comm_rs_ptr, flattened_comm_rs_len),
-            helpers::into_safe_challenge_seed(challenge_seed),
-            bs,
-            from_raw_parts(faults_ptr, faults_len).to_vec(),
-        )
-    });
 
     let mut response = VerifyPoStResponse::default();
 
     match result {
-        Ok(dynamic) => {
+        Ok(is_valid) => {
             response.status_code = 0;
-            response.is_valid = dynamic.is_valid;
+            response.is_valid = is_valid;
         }
         Err(err) => {
             response.status_code = 1;
