@@ -22,4 +22,4 @@ libc = "0.2.58"
 slog = "2.4.1"
 
 [build-dependencies]
-cbindgen = "=0.8.4"
+cbindgen = "0.9"
