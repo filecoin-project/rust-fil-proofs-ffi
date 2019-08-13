@@ -24,7 +24,3 @@ storage-proofs = "0.6.1"
 
 [build-dependencies]
 cbindgen = "=0.8.4"
-
-[patch.crates-io]
-filecoin-proofs = { git = 'https://github.com/filecoin-project/rust-fil-proofs.git', branch = 'master' }
-storage-proofs = { git = 'https://github.com/filecoin-project/rust-fil-proofs.git', branch = 'master' }
