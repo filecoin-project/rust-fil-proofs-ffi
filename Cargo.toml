@@ -23,3 +23,7 @@ once_cell = "0.2.4"
 
 [build-dependencies]
 cbindgen = "=0.8.4"
+
+[patch.crates-io]
+filecoin-proofs = { git = 'https://github.com/filecoin-project/rust-fil-proofs.git', branch = 'master' }
+storage-proofs = { git = 'https://github.com/filecoin-project/rust-fil-proofs.git', branch = 'master' }
