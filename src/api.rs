@@ -7,7 +7,9 @@ use libc;
 use once_cell::sync::OnceCell;
 
 use crate::helpers;
+use crate::helpers::into_safe_challenge_seed;
 use crate::responses::*;
+use storage_proofs::sector::SectorId;
 
 /// Verifies the output of seal.
 ///
@@ -18,7 +20,7 @@ pub unsafe extern "C" fn verify_seal(
     comm_d: &[u8; 32],
     comm_r_star: &[u8; 32],
     prover_id: &[u8; 31],
-    sector_id: &[u8; 31],
+    sector_id: u64,
     proof_ptr: *const u8,
     proof_len: libc::size_t,
 ) -> *mut VerifySealResponse {
@@ -38,7 +40,7 @@ pub unsafe extern "C" fn verify_seal(
                 *comm_d,
                 *comm_r_star,
                 prover_id,
-                sector_id,
+                SectorId::from(sector_id),
                 &bs,
             )
         })
@@ -71,29 +73,39 @@ pub unsafe extern "C" fn verify_seal(
 #[no_mangle]
 pub unsafe extern "C" fn verify_post(
     sector_size: u64,
+    challenge_seed: &[u8; 32],
+    sector_ids_ptr: *const u64,
+    sector_ids_len: libc::size_t,
+    faulty_sector_ids_ptr: *const u64,
+    faulty_sector_ids_len: libc::size_t,
     flattened_comm_rs_ptr: *const u8,
     flattened_comm_rs_len: libc::size_t,
-    challenge_seed: &[u8; 32],
-    proofs_ptr: *const u8,
-    proofs_len: libc::size_t,
-    faults_ptr: *const u64,
-    faults_len: libc::size_t,
+    proof_ptr: *const u8,
+    proof_len: libc::size_t,
 ) -> *mut VerifyPoStResponse {
     init_log();
 
     info!("verify_post: start");
 
-    let cfg = api_types::PoStConfig(api_types::SectorSize(sector_size));
+    let mut response = VerifyPoStResponse::default();
 
-    let result = api_fns::verify_post(
-        cfg,
-        helpers::into_commitments(flattened_comm_rs_ptr, flattened_comm_rs_len),
-        challenge_seed,
-        from_raw_parts(proofs_ptr, proofs_len),
-        from_raw_parts(faults_ptr, faults_len),
+    let convert = helpers::to_public_replica_info_map(
+        sector_ids_ptr,
+        sector_ids_len,
+        flattened_comm_rs_ptr,
+        flattened_comm_rs_len,
+        faulty_sector_ids_ptr,
+        faulty_sector_ids_len,
     );
 
-    let mut response = VerifyPoStResponse::default();
+    let result = convert.and_then(|map| {
+        api_fns::verify_post(
+            api_types::PoStConfig(api_types::SectorSize(sector_size)),
+            &into_safe_challenge_seed(challenge_seed),
+            from_raw_parts(proof_ptr, proof_len),
+            &map,
+        )
+    });
 
     match result {
         Ok(is_valid) => {
@@ -104,10 +116,9 @@ pub unsafe extern "C" fn verify_post(
             response.status_code = 1;
             response.error_msg = rust_str_to_c_str(format!("{}", err));
         }
-    }
+    };
 
     info!("verify_post: {}", "finish");
-
     raw_ptr(response)
 }
 
