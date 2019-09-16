@@ -10,6 +10,20 @@ use crate::helpers;
 use crate::responses::*;
 use storage_proofs::sector::SectorId;
 
+#[cfg(not(target_os = "windows"))]
+unsafe fn raw_to_file(raw: *mut libc::c_void) -> std::fs::File {
+    use std::os::unix::io::{FromRawFd, RawFd};
+
+    std::fs::File::from_raw_fd(raw as RawFd)
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn raw_to_file(raw: *mut libc::c_void) -> std::fs::File {
+    use std::os::window::io::{FromRawHandle, RawHandle};
+
+    std::fs::File::from_raw_handle(raw as RawHandle)
+}
+
 /// Verifies the output of seal.
 ///
 #[no_mangle]
@@ -180,48 +194,13 @@ pub unsafe extern "C" fn destroy_verify_piece_inclusion_proof_response(
 
 /// Returns the merkle root for a piece after piece padding and alignment.
 #[no_mangle]
-#[cfg(not(target_os = "windows"))]
-pub unsafe extern "C" fn generate_piece_commitment(
-    piece_fd: libc::c_int,
-    unpadded_piece_size: u64,
-) -> *mut GeneratePieceCommitmentResponse {
-    init_log();
-
-    use std::os::unix::io::{FromRawFd, RawFd};
-
-    let mut piece_file = std::fs::File::from_raw_fd(piece_fd as RawFd);
-    let unpadded_piece_size = api_types::UnpaddedBytesAmount(unpadded_piece_size);
-
-    let result = api_fns::generate_piece_commitment(&mut piece_file, unpadded_piece_size);
-
-    let mut response = GeneratePieceCommitmentResponse::default();
-
-    match result {
-        Ok(comm_p) => {
-            response.status_code = 0;
-            response.comm_p = comm_p;
-        }
-        Err(err) => {
-            response.status_code = 1;
-            response.error_msg = rust_str_to_c_str(format!("{}", err));
-        }
-    }
-
-    raw_ptr(response)
-}
-
-/// Returns the merkle root for a piece after piece padding and alignment.
-#[no_mangle]
-#[cfg(target_os = "windows")]
 pub unsafe extern "C" fn generate_piece_commitment(
     piece_fd: *mut libc::c_void,
     unpadded_piece_size: u64,
 ) -> *mut GeneratePieceCommitmentResponse {
     init_log();
 
-    use std::os::window::io::{FromRawHandle, RawHandle};
-
-    let mut piece_file = std::fs::File::from_raw_handle(piece_fd as RawHandle);
+    let mut piece_file = raw_to_file(piece_fd);
     let unpadded_piece_size = api_types::UnpaddedBytesAmount(unpadded_piece_size);
 
     let result = api_fns::generate_piece_commitment(&mut piece_file, unpadded_piece_size);
