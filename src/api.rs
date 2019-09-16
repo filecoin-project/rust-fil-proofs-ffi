@@ -1,6 +1,6 @@
 use std::slice::from_raw_parts;
 
-use ffi_toolkit::{c_str_to_rust_str, raw_ptr, rust_str_to_c_str};
+use ffi_toolkit::{raw_ptr, rust_str_to_c_str};
 use filecoin_proofs as api_fns;
 use filecoin_proofs::types as api_types;
 use libc;
@@ -180,18 +180,51 @@ pub unsafe extern "C" fn destroy_verify_piece_inclusion_proof_response(
 
 /// Returns the merkle root for a piece after piece padding and alignment.
 #[no_mangle]
+#[cfg(not(target_os = "windows"))]
 pub unsafe extern "C" fn generate_piece_commitment(
-    piece_path: *const libc::c_char,
+    piece_fd: libc::c_int,
     unpadded_piece_size: u64,
 ) -> *mut GeneratePieceCommitmentResponse {
     init_log();
 
+    use std::os::unix::io::{FromRawFd, RawFd};
+
+    let mut piece_file = std::fs::File::from_raw_fd(piece_fd as RawFd);
     let unpadded_piece_size = api_types::UnpaddedBytesAmount(unpadded_piece_size);
 
-    let result = api_fns::generate_piece_commitment(
-        c_str_to_rust_str(piece_path).to_string(),
-        unpadded_piece_size,
-    );
+    let result = api_fns::generate_piece_commitment(&mut piece_file, unpadded_piece_size);
+
+    let mut response = GeneratePieceCommitmentResponse::default();
+
+    match result {
+        Ok(comm_p) => {
+            response.status_code = 0;
+            response.comm_p = comm_p;
+        }
+        Err(err) => {
+            response.status_code = 1;
+            response.error_msg = rust_str_to_c_str(format!("{}", err));
+        }
+    }
+
+    raw_ptr(response)
+}
+
+/// Returns the merkle root for a piece after piece padding and alignment.
+#[no_mangle]
+#[cfg(target_os = "windows")]
+pub unsafe extern "C" fn generate_piece_commitment(
+    piece_fd: *mut libc::c_void,
+    unpadded_piece_size: u64,
+) -> *mut GeneratePieceCommitmentResponse {
+    init_log();
+
+    use std::os::window::io::{FromRawHandle, RawHandle};
+
+    let mut piece_file = std::fs::File::from_raw_handle(piece_fd as RawHandle);
+    let unpadded_piece_size = api_types::UnpaddedBytesAmount(unpadded_piece_size);
+
+    let result = api_fns::generate_piece_commitment(&mut piece_file, unpadded_piece_size);
 
     let mut response = GeneratePieceCommitmentResponse::default();
 
