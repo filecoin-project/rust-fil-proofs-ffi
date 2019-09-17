@@ -11,17 +11,31 @@ use crate::responses::*;
 use storage_proofs::sector::SectorId;
 
 #[cfg(not(target_os = "windows"))]
-unsafe fn raw_to_file(raw: *mut libc::c_void) -> std::fs::File {
+pub unsafe fn raw_to_file(raw: *mut libc::c_void) -> std::fs::File {
     use std::os::unix::io::{FromRawFd, RawFd};
 
     std::fs::File::from_raw_fd(raw as RawFd)
 }
 
+#[cfg(not(target_os = "windows"))]
+pub unsafe fn file_to_raw(file: std::fs::File) -> std::os::unix::io::RawFd {
+    use std::os::unix::io::IntoRawFd;
+
+    file.into_raw_fd()
+}
+
 #[cfg(target_os = "windows")]
-unsafe fn raw_to_file(raw: *mut libc::c_void) -> std::fs::File {
+pub unsafe fn raw_to_file(raw: *mut libc::c_void) -> std::fs::File {
     use std::os::window::io::{FromRawHandle, RawHandle};
 
     std::fs::File::from_raw_handle(raw as RawHandle)
+}
+
+#[cfg(target_os = "windows")]
+pub unsafe fn file_to_raw(file: std::fs::File) -> std::os::windows::io::RawHandle {
+    use std::os::windows::io::IntoRawHandle;
+
+    file.into_raw_handle()
 }
 
 /// Verifies the output of seal.
@@ -201,11 +215,15 @@ pub unsafe extern "C" fn generate_piece_commitment(
     init_log();
 
     let mut piece_file = raw_to_file(piece_fd);
+
     let unpadded_piece_size = api_types::UnpaddedBytesAmount(unpadded_piece_size);
 
     let result = api_fns::generate_piece_commitment(&mut piece_file, unpadded_piece_size);
 
     let mut response = GeneratePieceCommitmentResponse::default();
+
+    // avoid dropping the File which closes it
+    let _fd = file_to_raw(piece_file);
 
     match result {
         Ok(comm_p) => {
