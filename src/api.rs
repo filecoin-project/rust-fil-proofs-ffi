@@ -3,40 +3,15 @@ use std::slice::from_raw_parts;
 use ffi_toolkit::{raw_ptr, rust_str_to_c_str};
 use filecoin_proofs as api_fns;
 use filecoin_proofs::types as api_types;
+use filedescriptor::{
+    FileDescriptor, FromRawFileDescriptor, IntoRawFileDescriptor, RawFileDescriptor,
+};
 use libc;
 use once_cell::sync::OnceCell;
 
 use crate::helpers;
 use crate::responses::*;
 use storage_proofs::sector::SectorId;
-
-#[cfg(not(target_os = "windows"))]
-pub unsafe fn raw_to_file(raw: *mut libc::c_void) -> std::fs::File {
-    use std::os::unix::io::{FromRawFd, RawFd};
-
-    std::fs::File::from_raw_fd(raw as RawFd)
-}
-
-#[cfg(not(target_os = "windows"))]
-pub unsafe fn file_to_raw(file: std::fs::File) -> std::os::unix::io::RawFd {
-    use std::os::unix::io::IntoRawFd;
-
-    file.into_raw_fd()
-}
-
-#[cfg(target_os = "windows")]
-pub unsafe fn raw_to_file(raw: *mut libc::c_void) -> std::fs::File {
-    use std::os::window::io::{FromRawHandle, RawHandle};
-
-    std::fs::File::from_raw_handle(raw as RawHandle)
-}
-
-#[cfg(target_os = "windows")]
-pub unsafe fn file_to_raw(file: std::fs::File) -> std::os::windows::io::RawHandle {
-    use std::os::windows::io::IntoRawHandle;
-
-    file.into_raw_handle()
-}
 
 /// Verifies the output of seal.
 ///
@@ -207,23 +182,24 @@ pub unsafe extern "C" fn destroy_verify_piece_inclusion_proof_response(
 }
 
 /// Returns the merkle root for a piece after piece padding and alignment.
+/// The caller is responsible for closing the passed in file descriptor.
 #[no_mangle]
 pub unsafe extern "C" fn generate_piece_commitment(
-    piece_fd: *mut libc::c_void,
+    piece_fd_raw: RawFileDescriptor,
     unpadded_piece_size: u64,
 ) -> *mut GeneratePieceCommitmentResponse {
     init_log();
 
-    let mut piece_file = raw_to_file(piece_fd);
+    let mut piece_fd = FileDescriptor::from_raw_file_descriptor(piece_fd_raw);
 
     let unpadded_piece_size = api_types::UnpaddedBytesAmount(unpadded_piece_size);
 
-    let result = api_fns::generate_piece_commitment(&mut piece_file, unpadded_piece_size);
-
-    let mut response = GeneratePieceCommitmentResponse::default();
+    let result = api_fns::generate_piece_commitment(&mut piece_fd, unpadded_piece_size);
 
     // avoid dropping the File which closes it
-    let _fd = file_to_raw(piece_file);
+    let _ = piece_fd.into_raw_file_descriptor();
+
+    let mut response = GeneratePieceCommitmentResponse::default();
 
     match result {
         Ok(comm_p) => {

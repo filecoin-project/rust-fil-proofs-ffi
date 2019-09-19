@@ -20,3 +20,4 @@ prefix = "filecoin_proofs_ffi"
 
 [parse]
 parse_deps = false
+include = ["filedescriptor"]
