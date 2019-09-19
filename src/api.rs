@@ -3,9 +3,6 @@ use std::slice::from_raw_parts;
 use ffi_toolkit::{raw_ptr, rust_str_to_c_str};
 use filecoin_proofs as api_fns;
 use filecoin_proofs::types as api_types;
-use filedescriptor::{
-    FileDescriptor, FromRawFileDescriptor, IntoRawFileDescriptor, RawFileDescriptor,
-};
 use libc;
 use once_cell::sync::OnceCell;
 
@@ -184,20 +181,23 @@ pub unsafe extern "C" fn destroy_verify_piece_inclusion_proof_response(
 /// Returns the merkle root for a piece after piece padding and alignment.
 /// The caller is responsible for closing the passed in file descriptor.
 #[no_mangle]
+#[cfg(not(target_os = "windows"))]
 pub unsafe extern "C" fn generate_piece_commitment(
-    piece_fd_raw: RawFileDescriptor,
+    piece_fd_raw: libc::c_int,
     unpadded_piece_size: u64,
 ) -> *mut GeneratePieceCommitmentResponse {
     init_log();
 
-    let mut piece_fd = FileDescriptor::from_raw_file_descriptor(piece_fd_raw);
+    use std::os::unix::io::{FromRawFd, IntoRawFd};
+
+    let mut piece_file = std::fs::File::from_raw_fd(piece_fd_raw);
 
     let unpadded_piece_size = api_types::UnpaddedBytesAmount(unpadded_piece_size);
 
-    let result = api_fns::generate_piece_commitment(&mut piece_fd, unpadded_piece_size);
+    let result = api_fns::generate_piece_commitment(&mut piece_file, unpadded_piece_size);
 
     // avoid dropping the File which closes it
-    let _ = piece_fd.into_raw_file_descriptor();
+    let _ = piece_file.into_raw_fd();
 
     let mut response = GeneratePieceCommitmentResponse::default();
 
