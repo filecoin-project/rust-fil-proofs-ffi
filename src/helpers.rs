@@ -23,7 +23,7 @@ pub unsafe fn to_public_replica_info_map(
     faulty_sector_ids_ptr: *const u64,
     faulty_sector_ids_len: libc::size_t,
 ) -> Result<BTreeMap<SectorId, PublicReplicaInfo>> {
-    ensure!(!sector_ids_ptr.is_null(), "secotr_ids_ptr must not be null");
+    ensure!(!sector_ids_ptr.is_null(), "sector_ids_ptr must not be null");
     ensure!(
         !flattened_comm_rs_ptr.is_null(),
         "flattened_comm_rs_ptr must not be null"
