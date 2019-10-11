@@ -1,6 +1,6 @@
 use std::slice::from_raw_parts;
 
-use ffi_toolkit::{raw_ptr, rust_str_to_c_str};
+use ffi_toolkit::{raw_ptr, rust_str_to_c_str, FCPResponseStatus};
 use filecoin_proofs as api_fns;
 use filecoin_proofs::types as api_types;
 use libc;
@@ -49,15 +49,15 @@ pub unsafe extern "C" fn verify_seal(
 
     match result {
         Ok(true) => {
-            response.status_code = 0;
+            response.status_code = FCPResponseStatus::FCPNoError;
             response.is_valid = true;
         }
         Ok(false) => {
-            response.status_code = 0;
+            response.status_code = FCPResponseStatus::FCPNoError;
             response.is_valid = false;
         }
         Err(err) => {
-            response.status_code = 1;
+            response.status_code = FCPResponseStatus::FCPUnclassifiedError;
             response.error_msg = rust_str_to_c_str(format!("{}", err));
         }
     };
@@ -110,11 +110,11 @@ pub unsafe extern "C" fn verify_post(
 
     match result {
         Ok(is_valid) => {
-            response.status_code = 0;
+            response.status_code = FCPResponseStatus::FCPNoError;
             response.is_valid = is_valid;
         }
         Err(err) => {
-            response.status_code = 1;
+            response.status_code = FCPResponseStatus::FCPUnclassifiedError;
             response.error_msg = rust_str_to_c_str(format!("{}", err));
         }
     };
@@ -166,15 +166,15 @@ pub unsafe extern "C" fn verify_piece_inclusion_proof(
 
     match result {
         Ok(true) => {
-            response.status_code = 0;
+            response.status_code = FCPResponseStatus::FCPNoError;
             response.is_valid = true;
         }
         Ok(false) => {
-            response.status_code = 0;
+            response.status_code = FCPResponseStatus::FCPNoError;
             response.is_valid = false;
         }
         Err(err) => {
-            response.status_code = 1;
+            response.status_code = FCPResponseStatus::FCPUnclassifiedError;
             response.error_msg = rust_str_to_c_str(format!("{}", err));
         }
     };
@@ -216,11 +216,11 @@ pub unsafe extern "C" fn generate_piece_commitment(
 
     match result {
         Ok(comm_p) => {
-            response.status_code = 0;
+            response.status_code = FCPResponseStatus::FCPNoError;
             response.comm_p = comm_p;
         }
         Err(err) => {
-            response.status_code = 1;
+            response.status_code = FCPResponseStatus::FCPUnclassifiedError;
             response.error_msg = rust_str_to_c_str(format!("{}", err));
         }
     }
