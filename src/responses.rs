@@ -1,7 +1,8 @@
 use std::ptr;
 
 use drop_struct_macro_derive::DropStructMacro;
-use ffi_toolkit::{free_c_str, FCPResponseStatus};
+// `CodeAndMessage` is the trait implemented by `code_and_message_impl`
+use ffi_toolkit::{code_and_message_impl, free_c_str, CodeAndMessage, FCPResponseStatus};
 
 ////////////////////////////////////////////////////////////////////////////////
 /// VerifySealResponse
@@ -25,6 +26,8 @@ impl Default for VerifySealResponse {
     }
 }
 
+code_and_message_impl!(VerifySealResponse);
+
 ////////////////////////////////////////////////////////////////////////////////
 /// VerifyPoStResponse
 //////////////////////
@@ -46,6 +49,8 @@ impl Default for VerifyPoStResponse {
         }
     }
 }
+
+code_and_message_impl!(VerifyPoStResponse);
 
 ///////////////////////////////////////////////////////////////////////////////
 /// VerifyPieceInclusionProofResponse
@@ -69,6 +74,8 @@ impl Default for VerifyPieceInclusionProofResponse {
     }
 }
 
+code_and_message_impl!(VerifyPieceInclusionProofResponse);
+
 ///////////////////////////////////////////////////////////////////////////////
 /// GeneratePieceCommitmentResponse
 ///////////////////////////////////
@@ -90,3 +97,5 @@ impl Default for GeneratePieceCommitmentResponse {
         }
     }
 }
+
+code_and_message_impl!(GeneratePieceCommitmentResponse);
