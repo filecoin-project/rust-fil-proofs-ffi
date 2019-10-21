@@ -53,30 +53,6 @@ impl Default for VerifyPoStResponse {
 code_and_message_impl!(VerifyPoStResponse);
 
 ///////////////////////////////////////////////////////////////////////////////
-/// VerifyPieceInclusionProofResponse
-/////////////////////////////////////
-
-#[repr(C)]
-#[derive(DropStructMacro)]
-pub struct VerifyPieceInclusionProofResponse {
-    pub status_code: FCPResponseStatus,
-    pub error_msg: *const libc::c_char,
-    pub is_valid: bool,
-}
-
-impl Default for VerifyPieceInclusionProofResponse {
-    fn default() -> Self {
-        VerifyPieceInclusionProofResponse {
-            status_code: FCPResponseStatus::FCPNoError,
-            error_msg: ptr::null(),
-            is_valid: false,
-        }
-    }
-}
-
-code_and_message_impl!(VerifyPieceInclusionProofResponse);
-
-///////////////////////////////////////////////////////////////////////////////
 /// GeneratePieceCommitmentResponse
 ///////////////////////////////////
 
