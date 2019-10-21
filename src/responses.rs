@@ -62,14 +62,18 @@ pub struct GeneratePieceCommitmentResponse {
     pub status_code: FCPResponseStatus,
     pub error_msg: *const libc::c_char,
     pub comm_p: [u8; 32],
+    /// The number of unpadded bytes in the original piece plus any (unpadded)
+    /// alignment bytes added to create a whole merkle tree.
+    pub num_bytes_aligned: u64,
 }
 
 impl Default for GeneratePieceCommitmentResponse {
     fn default() -> GeneratePieceCommitmentResponse {
         GeneratePieceCommitmentResponse {
             status_code: FCPResponseStatus::FCPNoError,
-            error_msg: ptr::null(),
             comm_p: Default::default(),
+            error_msg: ptr::null(),
+            num_bytes_aligned: 0,
         }
     }
 }

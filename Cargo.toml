@@ -13,8 +13,8 @@ publish = false
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-filecoin-proofs = { git = "https://github.com/filecoin-project/rust-fil-proofs.git", branch = "master" }
-storage-proofs = { git = "https://github.com/filecoin-project/rust-fil-proofs.git", branch = "master" }
+filecoin-proofs = { git = "https://github.com/filecoin-project/rust-fil-proofs.git", branch = "feat/interactive-porep" }
+storage-proofs = { git = "https://github.com/filecoin-project/rust-fil-proofs.git", branch = "feat/interactive-porep" }
 ffi-toolkit = "0.4.0"
 failure = "0.1.5"
 drop_struct_macro_derive = "0.4.0"

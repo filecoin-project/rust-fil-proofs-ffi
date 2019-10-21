@@ -2,13 +2,30 @@ use std::slice::from_raw_parts;
 
 use ffi_toolkit::{catch_panic_response, raw_ptr, rust_str_to_c_str, FCPResponseStatus};
 use filecoin_proofs as api_fns;
-use filecoin_proofs::types as api_types;
+use filecoin_proofs::{types as api_types, PieceInfo, UnpaddedBytesAmount};
 use libc;
 use once_cell::sync::OnceCell;
+use storage_proofs::sector::SectorId;
 
 use crate::helpers;
 use crate::responses::*;
-use storage_proofs::sector::SectorId;
+
+#[repr(C)]
+#[derive(Clone)]
+pub struct FFIPublicPieceInfo {
+    pub num_bytes: u64,
+    pub comm_p: [u8; 32],
+}
+
+impl From<FFIPublicPieceInfo> for PieceInfo {
+    fn from(x: FFIPublicPieceInfo) -> Self {
+        let FFIPublicPieceInfo { num_bytes, comm_p } = x;
+        PieceInfo {
+            commitment: comm_p,
+            size: UnpaddedBytesAmount(num_bytes),
+        }
+    }
+}
 
 /// Verifies the output of seal.
 ///
@@ -19,9 +36,12 @@ pub unsafe extern "C" fn verify_seal(
     comm_d: &[u8; 32],
     prover_id: &[u8; 32],
     ticket: &[u8; 32],
+    seed: &[u8; 32],
     sector_id: u64,
     proof_ptr: *const u8,
     proof_len: libc::size_t,
+    pieces_ptr: *const FFIPublicPieceInfo,
+    pieces_len: libc::size_t,
 ) -> *mut VerifySealResponse {
     catch_panic_response(|| {
         init_log();
@@ -32,6 +52,12 @@ pub unsafe extern "C" fn verify_seal(
 
         let result = porep_bytes.and_then(|bs| {
             helpers::porep_proof_partitions_try_from_bytes(&bs).and_then(|ppp| {
+                let public_pieces: Vec<PieceInfo> = from_raw_parts(pieces_ptr, pieces_len)
+                    .iter()
+                    .cloned()
+                    .map(Into::into)
+                    .collect();
+
                 let cfg = api_types::PoRepConfig(api_types::SectorSize(sector_size), ppp);
 
                 api_fns::verify_seal(
@@ -41,7 +67,9 @@ pub unsafe extern "C" fn verify_seal(
                     *prover_id,
                     SectorId::from(sector_id),
                     *ticket,
+                    *seed,
                     &bs,
+                    &public_pieces,
                 )
             })
         });
@@ -152,9 +180,10 @@ pub unsafe extern "C" fn generate_piece_commitment(
         let mut response = GeneratePieceCommitmentResponse::default();
 
         match result {
-            Ok(comm_p) => {
+            Ok(meta) => {
                 response.status_code = FCPResponseStatus::FCPNoError;
-                response.comm_p = comm_p;
+                response.comm_p = meta.commitment;
+                response.num_bytes_aligned = meta.size.into();
             }
             Err(err) => {
                 response.status_code = FCPResponseStatus::FCPUnclassifiedError;
