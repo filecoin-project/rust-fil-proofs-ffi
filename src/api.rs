@@ -40,8 +40,6 @@ pub unsafe extern "C" fn verify_seal(
     sector_id: u64,
     proof_ptr: *const u8,
     proof_len: libc::size_t,
-    pieces_ptr: *const FFIPublicPieceInfo,
-    pieces_len: libc::size_t,
 ) -> *mut VerifySealResponse {
     catch_panic_response(|| {
         init_log();
@@ -52,12 +50,6 @@ pub unsafe extern "C" fn verify_seal(
 
         let result = porep_bytes.and_then(|bs| {
             helpers::porep_proof_partitions_try_from_bytes(&bs).and_then(|ppp| {
-                let public_pieces: Vec<PieceInfo> = from_raw_parts(pieces_ptr, pieces_len)
-                    .iter()
-                    .cloned()
-                    .map(Into::into)
-                    .collect();
-
                 let cfg = api_types::PoRepConfig(api_types::SectorSize(sector_size), ppp);
 
                 api_fns::verify_seal(
@@ -69,7 +61,6 @@ pub unsafe extern "C" fn verify_seal(
                     *ticket,
                     *seed,
                     &bs,
-                    &public_pieces,
                 )
             })
         });

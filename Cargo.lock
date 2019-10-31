@@ -638,7 +638,11 @@ dependencies = [
 [[package]]
 name = "filecoin-proofs"
 version = "0.6.4"
+<<<<<<< HEAD
 source = "git+https://github.com/filecoin-project/rust-fil-proofs.git#66297323d138fc2f9c6bf8f04f423d6b7f353e1c"
+=======
+source = "git+https://github.com/filecoin-project/rust-fil-proofs.git?branch=temp/before-gpu-support#03a4dacc31267d4e0f7a3558855b8066b1610153"
+>>>>>>> cc18adf... feat(commd): drop pieces from verify
 dependencies = [
  "bellperson 0.3.4 (registry+https://github.com/rust-lang/crates.io-index)",
  "bitvec 0.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1921,7 +1925,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "storage-proofs"
 version = "0.6.2"
+<<<<<<< HEAD
 source = "git+https://github.com/filecoin-project/rust-fil-proofs.git#66297323d138fc2f9c6bf8f04f423d6b7f353e1c"
+=======
+source = "git+https://github.com/filecoin-project/rust-fil-proofs.git?branch=temp/before-gpu-support#03a4dacc31267d4e0f7a3558855b8066b1610153"
+>>>>>>> cc18adf... feat(commd): drop pieces from verify
 dependencies = [
  "aes 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "base64 0.10.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -2641,7 +2649,11 @@ dependencies = [
 "checksum sha2 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "7b4d8bfd0e469f417657573d8451fb33d16cfe0989359b93baf3a1ffc639543d"
 "checksum slab 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)" = "c111b5bd5695e56cffe5129854aa230b39c93a305372fdbb2668ca2394eea9f8"
 "checksum smallvec 0.6.12 (registry+https://github.com/rust-lang/crates.io-index)" = "533e29e15d0748f28afbaf4ff7cab44d73e483a8e50b38c40bd13b7f3d48f542"
+<<<<<<< HEAD
 "checksum storage-proofs 0.6.2 (git+https://github.com/filecoin-project/rust-fil-proofs.git)" = "<none>"
+=======
+"checksum storage-proofs 0.6.2 (git+https://github.com/filecoin-project/rust-fil-proofs.git?branch=temp/before-gpu-support)" = "<none>"
+>>>>>>> cc18adf... feat(commd): drop pieces from verify
 "checksum string 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)" = "d24114bfcceb867ca7f71a0d3fe45d45619ec47a6fbfa98cb14e14250bfa5d6d"
 "checksum strsim 0.8.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
 "checksum syn 0.14.9 (registry+https://github.com/rust-lang/crates.io-index)" = "261ae9ecaa397c42b960649561949d69311f08eeaea86a65696e6e46517cf741"
