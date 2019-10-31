@@ -2,7 +2,10 @@ use std::slice::from_raw_parts;
 
 use ffi_toolkit::{catch_panic_response, raw_ptr, rust_str_to_c_str, FCPResponseStatus};
 use filecoin_proofs as api_fns;
-use filecoin_proofs::{types as api_types, PieceInfo, UnpaddedBytesAmount};
+use filecoin_proofs::{
+    types as api_types, PieceInfo, PoRepConfig, PoRepProofPartitions, SectorSize,
+    UnpaddedBytesAmount,
+};
 use libc;
 use once_cell::sync::OnceCell;
 use storage_proofs::sector::SectorId;
@@ -186,9 +189,54 @@ pub unsafe extern "C" fn generate_piece_commitment(
     })
 }
 
+/// Returns the merkle root for a sector containing the provided pieces.
+#[no_mangle]
+pub unsafe extern "C" fn generate_data_commitment(
+    sector_size: u64,
+    pieces_ptr: *const FFIPublicPieceInfo,
+    pieces_len: libc::size_t,
+) -> *mut GenerateDataCommitmentResponse {
+    catch_panic_response(|| {
+        init_log();
+
+        let public_pieces: Vec<PieceInfo> = from_raw_parts(pieces_ptr, pieces_len)
+            .iter()
+            .cloned()
+            .map(Into::into)
+            .collect();
+
+        let result = api_fns::compute_comm_d(
+            PoRepConfig(SectorSize(sector_size), PoRepProofPartitions(0)),
+            &public_pieces,
+        );
+
+        let mut response = GenerateDataCommitmentResponse::default();
+
+        match result {
+            Ok(commitment) => {
+                response.status_code = FCPResponseStatus::FCPNoError;
+                response.comm_d = commitment;
+            }
+            Err(err) => {
+                response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+                response.error_msg = rust_str_to_c_str(format!("{}", err));
+            }
+        }
+
+        raw_ptr(response)
+    })
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn destroy_generate_piece_commitment_response(
     ptr: *mut GeneratePieceCommitmentResponse,
+) {
+    let _ = Box::from_raw(ptr);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn destroy_generate_data_commitment_response(
+    ptr: *mut GenerateDataCommitmentResponse,
 ) {
     let _ = Box::from_raw(ptr);
 }
