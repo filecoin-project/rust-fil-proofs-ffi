@@ -4,6 +4,41 @@ use drop_struct_macro_derive::DropStructMacro;
 // `CodeAndMessage` is the trait implemented by `code_and_message_impl`
 use ffi_toolkit::{code_and_message_impl, free_c_str, CodeAndMessage, FCPResponseStatus};
 use filecoin_proofs::{PieceInfo, UnpaddedBytesAmount};
+use std::io::{Error, SeekFrom};
+
+/// FileDescriptorRef does not drop its file descriptor when it is dropped. Its
+/// owner must manage the lifecycle of the file descriptor.
+pub struct FileDescriptorRef(nodrop::NoDrop<std::fs::File>);
+
+impl FileDescriptorRef {
+    #[cfg(not(target_os = "windows"))]
+    pub unsafe fn new(raw: std::os::unix::io::RawFd) -> Self {
+        use std::os::unix::io::FromRawFd;
+        FileDescriptorRef(nodrop::NoDrop::new(std::fs::File::from_raw_fd(raw)))
+    }
+}
+
+impl std::io::Read for FileDescriptorRef {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        self.0.read(buf)
+    }
+}
+
+impl std::io::Write for FileDescriptorRef {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, Error> {
+        self.0.write(buf)
+    }
+
+    fn flush(&mut self) -> Result<(), Error> {
+        self.0.flush()
+    }
+}
+
+impl std::io::Seek for FileDescriptorRef {
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64, Error> {
+        self.0.seek(pos)
+    }
+}
 
 #[repr(C)]
 #[derive(Clone)]
@@ -25,15 +60,21 @@ impl From<FFIPublicPieceInfo> for PieceInfo {
 #[repr(C)]
 #[derive(DropStructMacro)]
 pub struct WriteWithAlignmentResponse {
-    pub status_code: FCPResponseStatus,
+    pub comm_p: [u8; 32],
     pub error_msg: *const libc::c_char,
+    pub left_alignment_unpadded: u64,
+    pub status_code: FCPResponseStatus,
+    pub total_write_unpadded: u64,
 }
 
 impl Default for WriteWithAlignmentResponse {
     fn default() -> WriteWithAlignmentResponse {
         WriteWithAlignmentResponse {
+            comm_p: Default::default(),
             status_code: FCPResponseStatus::FCPNoError,
             error_msg: ptr::null(),
+            left_alignment_unpadded: 0,
+            total_write_unpadded: 0,
         }
     }
 }
@@ -43,15 +84,19 @@ code_and_message_impl!(WriteWithAlignmentResponse);
 #[repr(C)]
 #[derive(DropStructMacro)]
 pub struct WriteWithoutAlignmentResponse {
-    pub status_code: FCPResponseStatus,
+    pub comm_p: [u8; 32],
     pub error_msg: *const libc::c_char,
+    pub status_code: FCPResponseStatus,
+    pub total_write_unpadded: u64,
 }
 
 impl Default for WriteWithoutAlignmentResponse {
     fn default() -> WriteWithoutAlignmentResponse {
         WriteWithoutAlignmentResponse {
+            comm_p: Default::default(),
             status_code: FCPResponseStatus::FCPNoError,
             error_msg: ptr::null(),
+            total_write_unpadded: 0,
         }
     }
 }

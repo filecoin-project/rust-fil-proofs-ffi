@@ -4,6 +4,7 @@ use ffi_toolkit::{catch_panic_response, raw_ptr, rust_str_to_c_str, FCPResponseS
 use filecoin_proofs as api_fns;
 use filecoin_proofs::{
     types as api_types, PieceInfo, PoRepConfig, PoRepProofPartitions, SectorSize,
+    UnpaddedBytesAmount,
 };
 use libc;
 use once_cell::sync::OnceCell;
@@ -15,13 +16,46 @@ use crate::types::*;
 /// TODO: document
 ///
 #[no_mangle]
-pub unsafe extern "C" fn write_with_alignment() -> *mut WriteWithAlignmentResponse {
+#[cfg(not(target_os = "windows"))]
+pub unsafe extern "C" fn write_with_alignment(
+    src_fd: libc::c_int,
+    src_size: u64,
+    dst_fd: libc::c_int,
+    existing_piece_sizes_ptr: *const u64,
+    existing_piece_sizes_len: libc::size_t,
+) -> *mut WriteWithAlignmentResponse {
     catch_panic_response(|| {
         init_log();
 
         info!("write_with_alignment: start");
 
         let mut response = WriteWithAlignmentResponse::default();
+
+        let piece_sizes: Vec<UnpaddedBytesAmount> =
+            from_raw_parts(existing_piece_sizes_ptr, existing_piece_sizes_len)
+                .iter()
+                .map(|n| UnpaddedBytesAmount(*n))
+                .collect();
+
+        let n = UnpaddedBytesAmount(src_size);
+
+        match api_fns::add_piece(
+            FileDescriptorRef::new(src_fd),
+            FileDescriptorRef::new(dst_fd),
+            n,
+            &piece_sizes,
+        ) {
+            Ok((aligned_bytes_written, comm_p)) => {
+                response.comm_p = comm_p;
+                response.left_alignment_unpadded = (aligned_bytes_written - n).into();
+                response.status_code = FCPResponseStatus::FCPNoError;
+                response.total_write_unpadded = aligned_bytes_written.into();
+            }
+            Err(err) => {
+                response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+                response.error_msg = rust_str_to_c_str(format!("{}", err));
+            }
+        }
 
         info!("write_with_alignment: finish");
 
@@ -32,13 +66,34 @@ pub unsafe extern "C" fn write_with_alignment() -> *mut WriteWithAlignmentRespon
 /// TODO: document
 ///
 #[no_mangle]
-pub unsafe extern "C" fn write_without_alignment() -> *mut WriteWithoutAlignmentResponse {
+#[cfg(not(target_os = "windows"))]
+pub unsafe extern "C" fn write_without_alignment(
+    src_fd: libc::c_int,
+    src_size: u64,
+    dst_fd: libc::c_int,
+) -> *mut WriteWithoutAlignmentResponse {
     catch_panic_response(|| {
         init_log();
 
         info!("write_without_alignment: start");
 
         let mut response = WriteWithoutAlignmentResponse::default();
+
+        match api_fns::write_and_preprocess(
+            FileDescriptorRef::new(src_fd),
+            FileDescriptorRef::new(dst_fd),
+            UnpaddedBytesAmount(src_size),
+        ) {
+            Ok((total_bytes_written, comm_p)) => {
+                response.comm_p = comm_p;
+                response.status_code = FCPResponseStatus::FCPNoError;
+                response.total_write_unpadded = total_bytes_written.into();
+            }
+            Err(err) => {
+                response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+                response.error_msg = rust_str_to_c_str(format!("{}", err));
+            }
+        }
 
         info!("write_without_alignment: finish");
 
@@ -367,4 +422,76 @@ fn init_log() {
         let _ = pretty_env_logger::try_init_timed();
         true
     });
+}
+
+#[cfg(test)]
+pub mod tests {
+    use super::*;
+    use ffi_toolkit::{c_str_to_rust_str, FCPResponseStatus};
+    use rand::{thread_rng, Rng};
+    use std::io::{Seek, SeekFrom, Write};
+    use std::os::unix::io::IntoRawFd;
+
+    #[test]
+    fn test_write_with_and_without_alignment() -> Result<(), failure::Error> {
+        // write some bytes to a temp file to be used as the byte source
+        let mut rng = thread_rng();
+        let buf: Vec<u8> = (0..508).map(|_| rng.gen()).collect();
+
+        // first temp file occupies 4 nodes in a merkle tree built over the
+        // destination (after preprocessing)
+        let mut src_file_a = tempfile::tempfile()?;
+        let _ = src_file_a.write_all(&buf[0..127])?;
+        src_file_a.seek(SeekFrom::Start(0))?;
+
+        // second occupies 16 nodes
+        let mut src_file_b = tempfile::tempfile()?;
+        let _ = src_file_b.write_all(&buf[0..508])?;
+        src_file_b.seek(SeekFrom::Start(0))?;
+
+        // create a temp file to be used as the byte destination
+        let mut dest = tempfile::tempfile()?;
+
+        // transmute temp files to file descriptors
+        let src_fd_a = src_file_a.into_raw_fd();
+        let src_fd_b = src_file_b.into_raw_fd();
+        let dst_fd = dest.into_raw_fd();
+
+        // write the first file
+        unsafe {
+            let resp = write_without_alignment(src_fd_a, 127, dst_fd);
+
+            if (*resp).status_code != FCPResponseStatus::FCPNoError {
+                let msg = c_str_to_rust_str((*resp).error_msg);
+                panic!("write_without_alignment failed: {:?}", msg);
+            }
+
+            assert_eq!(
+                (*resp).total_write_unpadded,
+                127,
+                "should have added 127 bytes of (unpadded) left alignment"
+            );
+        }
+
+        // write the second
+        unsafe {
+            let existing = vec![127u64];
+
+            let resp =
+                write_with_alignment(src_fd_b, 508, dst_fd, existing.as_ptr(), existing.len());
+
+            if (*resp).status_code != FCPResponseStatus::FCPNoError {
+                let msg = c_str_to_rust_str((*resp).error_msg);
+                panic!("write_with_alignment failed: {:?}", msg);
+            }
+
+            assert_eq!(
+                (*resp).left_alignment_unpadded,
+                381,
+                "should have added 381 bytes of (unpadded) left alignment"
+            );
+        }
+
+        Ok(())
+    }
 }

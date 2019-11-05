@@ -22,6 +22,11 @@ libc = "0.2.58"
 log = "0.4.7"
 pretty_env_logger = "0.3.0"
 once_cell = "0.2.4"
+nodrop = "0.1.14"
 
 [build-dependencies]
 cbindgen = "0.9"
+
+[dev-dependencies]
+rand = "0.7.2"
+tempfile = "3.0.8"
