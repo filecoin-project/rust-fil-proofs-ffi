@@ -210,3 +210,9 @@ commands:
           key: v15b-proof-params-{{ arch }}
           paths:
             - /tmp/filecoin-parameter-cache
+  install_rust:
+    steps:
+      - run:
+          name: Install Rust
+          command: |
+            curl https://sh.rustup.rs -sSf | sh -s -- -y
