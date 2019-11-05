@@ -22,7 +22,7 @@ use storage_proofs::hasher::pedersen::PedersenDomain;
 
 lazy_static! {
     static ref TEMPORAY_AUX_MAP: Mutex<HashMap<u64, api_types::TemporaryAux>> =
-        { Mutex::new(HashMap::new()) };
+        Mutex::new(HashMap::new());
 }
 
 /// TODO: document
