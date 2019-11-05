@@ -12,6 +12,91 @@ use storage_proofs::sector::SectorId;
 use crate::helpers;
 use crate::types::*;
 
+/// TODO: document
+///
+#[no_mangle]
+pub unsafe extern "C" fn write_with_alignment() -> *mut WriteWithAlignmentResponse {
+    catch_panic_response(|| {
+        init_log();
+
+        info!("write_with_alignment: start");
+
+        let mut response = WriteWithAlignmentResponse::default();
+
+        info!("write_with_alignment: finish");
+
+        raw_ptr(response)
+    })
+}
+
+/// TODO: document
+///
+#[no_mangle]
+pub unsafe extern "C" fn write_without_alignment() -> *mut WriteWithoutAlignmentResponse {
+    catch_panic_response(|| {
+        init_log();
+
+        info!("write_without_alignment: start");
+
+        let mut response = WriteWithoutAlignmentResponse::default();
+
+        info!("write_without_alignment: finish");
+
+        raw_ptr(response)
+    })
+}
+
+/// TODO: document
+///
+#[no_mangle]
+pub unsafe extern "C" fn seal_pre_commit() -> *mut SealPreCommitResponse {
+    catch_panic_response(|| {
+        init_log();
+
+        info!("seal_pre_commit: start");
+
+        let mut response = SealPreCommitResponse::default();
+
+        info!("seal_pre_commit: finish");
+
+        raw_ptr(response)
+    })
+}
+
+/// TODO: document
+///
+#[no_mangle]
+pub unsafe extern "C" fn seal_commit() -> *mut SealCommitResponse {
+    catch_panic_response(|| {
+        init_log();
+
+        info!("seal_commit: start");
+
+        let mut response = SealCommitResponse::default();
+
+        info!("seal_commit: finish");
+
+        raw_ptr(response)
+    })
+}
+
+/// TODO: document
+///
+#[no_mangle]
+pub unsafe extern "C" fn unseal() -> *mut UnsealResponse {
+    catch_panic_response(|| {
+        init_log();
+
+        info!("unseal: start");
+
+        let mut response = UnsealResponse::default();
+
+        info!("unseal: finish");
+
+        raw_ptr(response)
+    })
+}
+
 /// Verifies the output of seal.
 ///
 #[no_mangle]
@@ -207,6 +292,33 @@ pub unsafe extern "C" fn generate_data_commitment(
 
         raw_ptr(response)
     })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn destroy_write_alignment_response(ptr: *mut WriteWithAlignmentResponse) {
+    let _ = Box::from_raw(ptr);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn destroy_write_without_alignment_response(
+    ptr: *mut WriteWithoutAlignmentResponse,
+) {
+    let _ = Box::from_raw(ptr);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn destroy_seal_pre_commit_response(ptr: *mut SealPreCommitResponse) {
+    let _ = Box::from_raw(ptr);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn destroy_seal_commit_response(ptr: *mut SealCommitResponse) {
+    let _ = Box::from_raw(ptr);
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn destroy_unseal_response(ptr: *mut UnsealResponse) {
+    let _ = Box::from_raw(ptr);
 }
 
 #[no_mangle]

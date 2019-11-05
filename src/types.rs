@@ -24,6 +24,96 @@ impl From<FFIPublicPieceInfo> for PieceInfo {
 
 #[repr(C)]
 #[derive(DropStructMacro)]
+pub struct WriteWithAlignmentResponse {
+    pub status_code: FCPResponseStatus,
+    pub error_msg: *const libc::c_char,
+}
+
+impl Default for WriteWithAlignmentResponse {
+    fn default() -> WriteWithAlignmentResponse {
+        WriteWithAlignmentResponse {
+            status_code: FCPResponseStatus::FCPNoError,
+            error_msg: ptr::null(),
+        }
+    }
+}
+
+code_and_message_impl!(WriteWithAlignmentResponse);
+
+#[repr(C)]
+#[derive(DropStructMacro)]
+pub struct WriteWithoutAlignmentResponse {
+    pub status_code: FCPResponseStatus,
+    pub error_msg: *const libc::c_char,
+}
+
+impl Default for WriteWithoutAlignmentResponse {
+    fn default() -> WriteWithoutAlignmentResponse {
+        WriteWithoutAlignmentResponse {
+            status_code: FCPResponseStatus::FCPNoError,
+            error_msg: ptr::null(),
+        }
+    }
+}
+
+code_and_message_impl!(WriteWithoutAlignmentResponse);
+
+#[repr(C)]
+#[derive(DropStructMacro)]
+pub struct SealPreCommitResponse {
+    pub status_code: FCPResponseStatus,
+    pub error_msg: *const libc::c_char,
+}
+
+impl Default for SealPreCommitResponse {
+    fn default() -> SealPreCommitResponse {
+        SealPreCommitResponse {
+            status_code: FCPResponseStatus::FCPNoError,
+            error_msg: ptr::null(),
+        }
+    }
+}
+
+code_and_message_impl!(SealPreCommitResponse);
+
+#[repr(C)]
+#[derive(DropStructMacro)]
+pub struct SealCommitResponse {
+    pub status_code: FCPResponseStatus,
+    pub error_msg: *const libc::c_char,
+}
+
+impl Default for SealCommitResponse {
+    fn default() -> SealCommitResponse {
+        SealCommitResponse {
+            status_code: FCPResponseStatus::FCPNoError,
+            error_msg: ptr::null(),
+        }
+    }
+}
+
+code_and_message_impl!(SealCommitResponse);
+
+#[repr(C)]
+#[derive(DropStructMacro)]
+pub struct UnsealResponse {
+    pub status_code: FCPResponseStatus,
+    pub error_msg: *const libc::c_char,
+}
+
+impl Default for UnsealResponse {
+    fn default() -> UnsealResponse {
+        UnsealResponse {
+            status_code: FCPResponseStatus::FCPNoError,
+            error_msg: ptr::null(),
+        }
+    }
+}
+
+code_and_message_impl!(UnsealResponse);
+
+#[repr(C)]
+#[derive(DropStructMacro)]
 pub struct VerifySealResponse {
     pub status_code: FCPResponseStatus,
     pub error_msg: *const libc::c_char,
