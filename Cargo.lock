@@ -686,7 +686,6 @@ dependencies = [
  "failure 0.1.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "ffi-toolkit 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "filecoin-proofs 0.6.4 (git+https://github.com/filecoin-project/rust-fil-proofs.git)",
- "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "libc 0.2.65 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.8 (registry+https://github.com/rust-lang/crates.io-index)",
  "once_cell 0.2.4 (registry+https://github.com/rust-lang/crates.io-index)",

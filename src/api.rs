@@ -11,7 +11,7 @@ use filecoin_proofs::{
     SectorClass, SectorSize, UnpaddedByteIndex, UnpaddedBytesAmount,
 };
 use libc;
-use once_cell::sync::OnceCell;
+use once_cell::sync::{Lazy, OnceCell};
 use storage_proofs::hasher::Domain;
 use storage_proofs::sector::SectorId;
 
@@ -20,10 +20,8 @@ use crate::types::*;
 use std::mem;
 use storage_proofs::hasher::pedersen::PedersenDomain;
 
-lazy_static! {
-    static ref TEMPORAY_AUX_MAP: Mutex<HashMap<u64, api_types::TemporaryAux>> =
-        Mutex::new(HashMap::new());
-}
+static TEMPORAY_AUX_MAP: Lazy<Mutex<HashMap<u64, api_types::TemporaryAux>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// TODO: document
 ///
