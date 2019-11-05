@@ -50,7 +50,7 @@ jobs:
     docker:
       - image: filecoin/rust:latest
     working_directory: /mnt/crate
-    resource_class: xlarge
+    resource_class: 2xlarge+
     steps:
       - configure_env
       - checkout
@@ -64,7 +64,7 @@ jobs:
             - parameter-cache-{{ .Revision }}
       - run:
           name: Test (nightly)
-          command: cargo test --verbose --all
+          command: cargo test --release --verbose --all
           no_output_timeout: 15m
 
   rustfmt:
