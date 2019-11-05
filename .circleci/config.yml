@@ -193,9 +193,6 @@ commands:
           command: |
             echo 'export RUST_LOG=info' >> $BASH_ENV
             echo 'export FIL_PROOFS_PARAMETER_CACHE="/tmp/filecoin-parameter-cache"' >> $BASH_ENV
-            echo 'export RUST_BACKTRACE=FULL' >> $BASH_ENV
-            echo 'export CARGO_HOME=/tmp/cargo' >> $BASH_ENV
-            echo 'export RUSTUP_HOME=/tmp/rustup' >> $BASH_ENV
             echo 'export PATH="${CARGO_HOME}/bin:${PATH}"' >> $BASH_ENV
             source $BASH_ENV
   restore_parameter_cache:
