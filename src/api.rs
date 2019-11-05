@@ -4,31 +4,13 @@ use ffi_toolkit::{catch_panic_response, raw_ptr, rust_str_to_c_str, FCPResponseS
 use filecoin_proofs as api_fns;
 use filecoin_proofs::{
     types as api_types, PieceInfo, PoRepConfig, PoRepProofPartitions, SectorSize,
-    UnpaddedBytesAmount,
 };
 use libc;
 use once_cell::sync::OnceCell;
 use storage_proofs::sector::SectorId;
 
 use crate::helpers;
-use crate::responses::*;
-
-#[repr(C)]
-#[derive(Clone)]
-pub struct FFIPublicPieceInfo {
-    pub num_bytes: u64,
-    pub comm_p: [u8; 32],
-}
-
-impl From<FFIPublicPieceInfo> for PieceInfo {
-    fn from(x: FFIPublicPieceInfo) -> Self {
-        let FFIPublicPieceInfo { num_bytes, comm_p } = x;
-        PieceInfo {
-            commitment: comm_p,
-            size: UnpaddedBytesAmount(num_bytes),
-        }
-    }
-}
+use crate::types::*;
 
 /// Verifies the output of seal.
 ///

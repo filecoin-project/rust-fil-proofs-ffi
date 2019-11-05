@@ -3,10 +3,24 @@ use std::ptr;
 use drop_struct_macro_derive::DropStructMacro;
 // `CodeAndMessage` is the trait implemented by `code_and_message_impl`
 use ffi_toolkit::{code_and_message_impl, free_c_str, CodeAndMessage, FCPResponseStatus};
+use filecoin_proofs::{PieceInfo, UnpaddedBytesAmount};
 
-////////////////////////////////////////////////////////////////////////////////
-/// VerifySealResponse
-//////////////////////
+#[repr(C)]
+#[derive(Clone)]
+pub struct FFIPublicPieceInfo {
+    pub num_bytes: u64,
+    pub comm_p: [u8; 32],
+}
+
+impl From<FFIPublicPieceInfo> for PieceInfo {
+    fn from(x: FFIPublicPieceInfo) -> Self {
+        let FFIPublicPieceInfo { num_bytes, comm_p } = x;
+        PieceInfo {
+            commitment: comm_p,
+            size: UnpaddedBytesAmount(num_bytes),
+        }
+    }
+}
 
 #[repr(C)]
 #[derive(DropStructMacro)]
@@ -28,10 +42,6 @@ impl Default for VerifySealResponse {
 
 code_and_message_impl!(VerifySealResponse);
 
-////////////////////////////////////////////////////////////////////////////////
-/// VerifyPoStResponse
-//////////////////////
-
 #[repr(C)]
 #[derive(DropStructMacro)]
 pub struct VerifyPoStResponse {
@@ -51,10 +61,6 @@ impl Default for VerifyPoStResponse {
 }
 
 code_and_message_impl!(VerifyPoStResponse);
-
-///////////////////////////////////////////////////////////////////////////////
-/// GeneratePieceCommitmentResponse
-///////////////////////////////////
 
 #[repr(C)]
 #[derive(DropStructMacro)]
@@ -79,10 +85,6 @@ impl Default for GeneratePieceCommitmentResponse {
 }
 
 code_and_message_impl!(GeneratePieceCommitmentResponse);
-
-///////////////////////////////////////////////////////////////////////////////
-/// GenerateDataCommitmentResponse
-//////////////////////////////////
 
 #[repr(C)]
 #[derive(DropStructMacro)]
