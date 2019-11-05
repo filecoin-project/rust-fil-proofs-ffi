@@ -7,8 +7,8 @@ use ffi_toolkit::{
 };
 use filecoin_proofs as api_fns;
 use filecoin_proofs::{
-    types as api_types, PieceInfo, PoRepConfig, PoRepProofPartitions, SectorClass, SectorSize,
-    UnpaddedBytesAmount,
+    types as api_types, PaddedBytesAmount, PieceInfo, PoRepConfig, PoRepProofPartitions,
+    SectorClass, SectorSize, UnpaddedByteIndex, UnpaddedBytesAmount,
 };
 use libc;
 use once_cell::sync::OnceCell;
@@ -301,13 +301,45 @@ pub unsafe extern "C" fn seal_commit(
 /// TODO: document
 ///
 #[no_mangle]
-pub unsafe extern "C" fn unseal() -> *mut UnsealResponse {
+pub unsafe extern "C" fn unseal(
+    sector_class: FFISectorClass,
+    sealed_sector_path: *const libc::c_char,
+    unseal_output_path: *const libc::c_char,
+    sector_id: u64,
+    prover_id: &[u8; 32],
+    ticket: &[u8; 32],
+    comm_d: &[u8; 32],
+) -> *mut UnsealResponse {
     catch_panic_response(|| {
         init_log();
 
         info!("unseal: start");
 
+        let sc: SectorClass = sector_class.clone().into();
+
+        let result = api_fns::get_unsealed_range(
+            sc.into(),
+            c_str_to_pbuf(sealed_sector_path),
+            c_str_to_pbuf(unseal_output_path),
+            *prover_id,
+            SectorId::from(sector_id),
+            *comm_d,
+            *ticket,
+            UnpaddedByteIndex(0u64),
+            UnpaddedBytesAmount::from(PaddedBytesAmount(sector_class.sector_size)),
+        );
+
         let mut response = UnsealResponse::default();
+
+        match result {
+            Ok(_) => {
+                response.status_code = FCPResponseStatus::FCPNoError;
+            }
+            Err(err) => {
+                response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+                response.error_msg = rust_str_to_c_str(format!("{}", err));
+            }
+        };
 
         info!("unseal: finish");
 
@@ -589,7 +621,7 @@ fn init_log() {
 
 #[cfg(test)]
 pub mod tests {
-    use std::io::{Seek, SeekFrom, Write};
+    use std::io::{Read, Seek, SeekFrom, Write};
     use std::os::unix::io::IntoRawFd;
 
     use ffi_toolkit::{c_str_to_rust_str, FCPResponseStatus};
@@ -678,16 +710,19 @@ pub mod tests {
 
         // create a byte source (a user's piece)
         let mut rng = thread_rng();
-        let buf: Vec<u8> = (0..1016).map(|_| rng.gen()).collect();
+        let buf_a: Vec<u8> = (0..1016).map(|_| rng.gen()).collect();
         let mut piece_file = tempfile::tempfile()?;
-        let _ = piece_file.write_all(&buf)?;
+        let _ = piece_file.write_all(&buf_a)?;
         piece_file.seek(SeekFrom::Start(0))?;
 
         // create the staged sector (the byte destination)
         let (staged_file, staged_path) = tempfile::NamedTempFile::new()?.keep()?;
 
         // create a temp file to be used as the byte destination
-        let (sealed_file, sealed_path) = tempfile::NamedTempFile::new()?.keep()?;
+        let (_, sealed_path) = tempfile::NamedTempFile::new()?.keep()?;
+
+        // last temp file is used to output unsealed bytes
+        let (_, unseal_path) = tempfile::NamedTempFile::new()?.keep()?;
 
         // transmute temp files to file descriptors
         let piece_file_fd = piece_file.into_raw_fd();
@@ -709,6 +744,7 @@ pub mod tests {
             let cache_dir_path_c_str = rust_str_to_c_str(cache_dir_path.to_str().unwrap());
             let staged_path_c_str = rust_str_to_c_str(staged_path.to_str().unwrap());
             let sealed_path_c_str = rust_str_to_c_str(sealed_path.to_str().unwrap());
+            let unseal_path_c_str = rust_str_to_c_str(unseal_path.to_str().unwrap());
 
             let resp_b = seal_pre_commit(
                 sector_class.clone(),
@@ -763,14 +799,41 @@ pub mod tests {
 
             assert!((*resp_d).is_valid, "proof was not valid");
 
+            let resp_e = unseal(
+                sector_class.clone(),
+                sealed_path_c_str,
+                unseal_path_c_str,
+                sector_id,
+                &prover_id,
+                &ticket,
+                &(*resp_b).seal_pre_commit_output.comm_d,
+            );
+
+            if (*resp_e).status_code != FCPResponseStatus::FCPNoError {
+                let msg = c_str_to_rust_str((*resp_a).error_msg);
+                panic!("unseal failed: {:?}", msg);
+            }
+
+            // ensure unsealed bytes match what we had in our piece
+            let mut buf_b = Vec::with_capacity(1016);
+            let mut f = std::fs::File::open(unseal_path)?;
+            let _ = f.read_to_end(&mut buf_b)?;
+            assert_eq!(
+                format!("{:x?}", &buf_a),
+                format!("{:x?}", &buf_b),
+                "original bytes don't match unsealed bytes"
+            );
+
             destroy_write_without_alignment_response(resp_a);
             destroy_seal_pre_commit_response(resp_b);
             destroy_seal_commit_response(resp_c);
             destroy_verify_seal_response(resp_d);
+            destroy_unseal_response(resp_e);
 
             c_str_to_rust_str(cache_dir_path_c_str);
             c_str_to_rust_str(staged_path_c_str);
             c_str_to_rust_str(sealed_path_c_str);
+            c_str_to_rust_str(unseal_path_c_str);
         }
 
         Ok(())
