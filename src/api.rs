@@ -1,17 +1,29 @@
+use std::collections::HashMap;
 use std::slice::from_raw_parts;
+use std::sync::Mutex;
 
-use ffi_toolkit::{catch_panic_response, raw_ptr, rust_str_to_c_str, FCPResponseStatus};
+use ffi_toolkit::{
+    c_str_to_pbuf, catch_panic_response, raw_ptr, rust_str_to_c_str, FCPResponseStatus,
+};
 use filecoin_proofs as api_fns;
 use filecoin_proofs::{
-    types as api_types, PieceInfo, PoRepConfig, PoRepProofPartitions, SectorSize,
+    types as api_types, PieceInfo, PoRepConfig, PoRepProofPartitions, SectorClass, SectorSize,
     UnpaddedBytesAmount,
 };
 use libc;
 use once_cell::sync::OnceCell;
+use storage_proofs::hasher::Domain;
 use storage_proofs::sector::SectorId;
 
 use crate::helpers;
 use crate::types::*;
+use std::mem;
+use storage_proofs::hasher::pedersen::PedersenDomain;
+
+lazy_static! {
+    static ref TEMPORAY_AUX_MAP: Mutex<HashMap<u64, api_types::TemporaryAux>> =
+        { Mutex::new(HashMap::new()) };
+}
 
 /// TODO: document
 ///
@@ -104,13 +116,79 @@ pub unsafe extern "C" fn write_without_alignment(
 /// TODO: document
 ///
 #[no_mangle]
-pub unsafe extern "C" fn seal_pre_commit() -> *mut SealPreCommitResponse {
+pub unsafe extern "C" fn seal_pre_commit(
+    sector_class: FFISectorClass,
+    cache_dir_path: *const libc::c_char,
+    staged_sector_path: *const libc::c_char,
+    sealed_sector_path: *const libc::c_char,
+    sector_id: u64,
+    prover_id: &[u8; 32],
+    ticket: &[u8; 32],
+    pieces_ptr: *const FFIPublicPieceInfo,
+    pieces_len: libc::size_t,
+) -> *mut SealPreCommitResponse {
     catch_panic_response(|| {
         init_log();
 
         info!("seal_pre_commit: start");
 
         let mut response = SealPreCommitResponse::default();
+
+        let public_pieces: Vec<PieceInfo> = from_raw_parts(pieces_ptr, pieces_len)
+            .iter()
+            .cloned()
+            .map(Into::into)
+            .collect();
+
+        let sc: SectorClass = sector_class.into();
+
+        match api_fns::seal_pre_commit(
+            sc.into(),
+            c_str_to_pbuf(cache_dir_path),
+            c_str_to_pbuf(staged_sector_path),
+            c_str_to_pbuf(sealed_sector_path),
+            *prover_id,
+            SectorId::from(sector_id),
+            *ticket,
+            &public_pieces,
+        ) {
+            Ok(output) => {
+                response.status_code = FCPResponseStatus::FCPNoError;
+
+                let mut x: FFISealPreCommitOutput = Default::default();
+                x.p_aux_comm_c
+                    .copy_from_slice(&output.p_aux.comm_c.into_bytes());
+                x.p_aux_comm_r_last
+                    .copy_from_slice(&output.p_aux.comm_r_last.into_bytes());
+                x.comm_r = output.comm_r;
+                x.comm_d = output.comm_d;
+
+                response.seal_pre_commit_output = x;
+
+                let warning = "Until the merkle cache is complete, \
+                               seal_pre_commit puts TemporaryAux in a \
+                               heap-allocated, global, in-memory lookup table. \
+                               If this process is killed before seal_commit is \
+                               called, TemporaryAux (and the sector) will be \
+                               lost. Also, seal_commit must be called from the \
+                               same process which called seal_pre_commit.";
+
+                warn!(
+                    "seal_pre_commit warning for sector id = {:?}: {:?}",
+                    sector_id, warning
+                );
+
+                let mut aux_map = TEMPORAY_AUX_MAP
+                    .lock()
+                    .expect("error acquiring TemporaryAux mutex");
+
+                let _ = aux_map.insert(sector_id, output.t_aux);
+            }
+            Err(err) => {
+                response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+                response.error_msg = rust_str_to_c_str(format!("{}", err));
+            }
+        }
 
         info!("seal_pre_commit: finish");
 
@@ -121,13 +199,98 @@ pub unsafe extern "C" fn seal_pre_commit() -> *mut SealPreCommitResponse {
 /// TODO: document
 ///
 #[no_mangle]
-pub unsafe extern "C" fn seal_commit() -> *mut SealCommitResponse {
+pub unsafe extern "C" fn seal_commit(
+    sector_class: FFISectorClass,
+    cache_dir_path: *const libc::c_char,
+    sector_id: u64,
+    prover_id: &[u8; 32],
+    ticket: &[u8; 32],
+    seed: &[u8; 32],
+    pieces_ptr: *const FFIPublicPieceInfo,
+    pieces_len: libc::size_t,
+    spco: FFISealPreCommitOutput,
+) -> *mut SealCommitResponse {
     catch_panic_response(|| {
         init_log();
 
         info!("seal_commit: start");
 
         let mut response = SealCommitResponse::default();
+
+        let t_aux = {
+            let mut aux_map = TEMPORAY_AUX_MAP
+                .lock()
+                .expect("error acquiring TemporaryAux mutex");
+
+            aux_map.remove(&sector_id)
+        };
+
+        let comm_r_last = PedersenDomain::try_from_bytes(&spco.p_aux_comm_r_last[..]);
+        let comm_c = PedersenDomain::try_from_bytes(&spco.p_aux_comm_c[..]);
+
+        if t_aux.is_none() {
+            response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+            response.error_msg = rust_str_to_c_str(format!(
+                "no TemporaryAux in map for sector id={:?} - has it ben pre-committed yet?",
+                sector_id
+            ));
+            info!("seal_commit: finish");
+            return raw_ptr(response);
+        }
+
+        if comm_r_last.is_err() {
+            response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+            response.error_msg = rust_str_to_c_str("cannot xform comm_r_last to PedersenDomain");
+            info!("seal_commit: finish");
+            return raw_ptr(response);
+        }
+
+        if comm_c.is_err() {
+            response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+            response.error_msg = rust_str_to_c_str("cannot xform comm_c to PedersenDomain");
+            info!("seal_commit: finish");
+            return raw_ptr(response);
+        }
+
+        let spco = api_types::SealPreCommitOutput {
+            comm_r: spco.comm_r,
+            comm_d: spco.comm_d,
+            p_aux: api_types::PersistentAux {
+                comm_c: comm_c.unwrap(),
+                comm_r_last: comm_r_last.unwrap(),
+            },
+            t_aux: t_aux.unwrap(),
+        };
+
+        let public_pieces: Vec<PieceInfo> = from_raw_parts(pieces_ptr, pieces_len)
+            .iter()
+            .cloned()
+            .map(Into::into)
+            .collect();
+
+        let sc: SectorClass = sector_class.into();
+
+        match api_fns::seal_commit(
+            sc.into(),
+            c_str_to_pbuf(cache_dir_path),
+            *prover_id,
+            SectorId::from(sector_id),
+            *ticket,
+            *seed,
+            spco,
+            &public_pieces,
+        ) {
+            Ok(output) => {
+                response.status_code = FCPResponseStatus::FCPNoError;
+                response.proof_ptr = output.proof.as_ptr();
+                response.proof_len = output.proof.len();
+                mem::forget(output.proof);
+            }
+            Err(err) => {
+                response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+                response.error_msg = rust_str_to_c_str(format!("{}", err));
+            }
+        }
 
         info!("seal_commit: finish");
 
@@ -426,11 +589,13 @@ fn init_log() {
 
 #[cfg(test)]
 pub mod tests {
-    use super::*;
-    use ffi_toolkit::{c_str_to_rust_str, FCPResponseStatus};
-    use rand::{thread_rng, Rng};
     use std::io::{Seek, SeekFrom, Write};
     use std::os::unix::io::IntoRawFd;
+
+    use ffi_toolkit::{c_str_to_rust_str, FCPResponseStatus};
+    use rand::{thread_rng, Rng};
+
+    use super::*;
 
     #[test]
     fn test_write_with_and_without_alignment() -> Result<(), failure::Error> {
@@ -450,7 +615,7 @@ pub mod tests {
         src_file_b.seek(SeekFrom::Start(0))?;
 
         // create a temp file to be used as the byte destination
-        let mut dest = tempfile::tempfile()?;
+        let dest = tempfile::tempfile()?;
 
         // transmute temp files to file descriptors
         let src_fd_a = src_file_a.into_raw_fd();
@@ -490,6 +655,122 @@ pub mod tests {
                 381,
                 "should have added 381 bytes of (unpadded) left alignment"
             );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_sealing() -> Result<(), failure::Error> {
+        // miscellaneous setup and shared values
+        let sector_class = FFISectorClass {
+            sector_size: 1024,
+            porep_proof_partitions: 2,
+        };
+
+        let cache_dir = tempfile::tempdir()?;
+        let cache_dir_path = cache_dir.into_path();
+
+        let prover_id = [1u8; 32];
+        let sector_id = 42;
+        let seed = [5u8; 32];
+        let ticket = [6u8; 32];
+
+        // create a byte source (a user's piece)
+        let mut rng = thread_rng();
+        let buf: Vec<u8> = (0..1016).map(|_| rng.gen()).collect();
+        let mut piece_file = tempfile::tempfile()?;
+        let _ = piece_file.write_all(&buf)?;
+        piece_file.seek(SeekFrom::Start(0))?;
+
+        // create the staged sector (the byte destination)
+        let (staged_file, staged_path) = tempfile::NamedTempFile::new()?.keep()?;
+
+        // create a temp file to be used as the byte destination
+        let (sealed_file, sealed_path) = tempfile::NamedTempFile::new()?.keep()?;
+
+        // transmute temp files to file descriptors
+        let piece_file_fd = piece_file.into_raw_fd();
+        let staged_sector_fd = staged_file.into_raw_fd();
+
+        unsafe {
+            let resp_a = write_without_alignment(piece_file_fd, 1016, staged_sector_fd);
+
+            if (*resp_a).status_code != FCPResponseStatus::FCPNoError {
+                let msg = c_str_to_rust_str((*resp_a).error_msg);
+                panic!("write_without_alignment failed: {:?}", msg);
+            }
+
+            let pieces = vec![FFIPublicPieceInfo {
+                num_bytes: 1016,
+                comm_p: (*resp_a).comm_p,
+            }];
+
+            let cache_dir_path_c_str = rust_str_to_c_str(cache_dir_path.to_str().unwrap());
+            let staged_path_c_str = rust_str_to_c_str(staged_path.to_str().unwrap());
+            let sealed_path_c_str = rust_str_to_c_str(sealed_path.to_str().unwrap());
+
+            let resp_b = seal_pre_commit(
+                sector_class.clone(),
+                cache_dir_path_c_str,
+                staged_path_c_str,
+                sealed_path_c_str,
+                sector_id,
+                &prover_id,
+                &ticket,
+                pieces.as_ptr(),
+                pieces.len(),
+            );
+
+            if (*resp_b).status_code != FCPResponseStatus::FCPNoError {
+                let msg = c_str_to_rust_str((*resp_a).error_msg);
+                panic!("seal_pre_commit failed: {:?}", msg);
+            }
+
+            let resp_c = seal_commit(
+                sector_class.clone(),
+                cache_dir_path_c_str,
+                sector_id,
+                &prover_id,
+                &ticket,
+                &seed,
+                pieces.as_ptr(),
+                pieces.len(),
+                (*(resp_b)).seal_pre_commit_output,
+            );
+
+            if (*resp_c).status_code != FCPResponseStatus::FCPNoError {
+                let msg = c_str_to_rust_str((*resp_a).error_msg);
+                panic!("seal_commit failed: {:?}", msg);
+            }
+
+            let resp_d = verify_seal(
+                1024,
+                &(*resp_b).seal_pre_commit_output.comm_r,
+                &(*resp_b).seal_pre_commit_output.comm_d,
+                &prover_id,
+                &ticket,
+                &seed,
+                sector_id,
+                (*resp_c).proof_ptr,
+                (*resp_c).proof_len,
+            );
+
+            if (*resp_d).status_code != FCPResponseStatus::FCPNoError {
+                let msg = c_str_to_rust_str((*resp_a).error_msg);
+                panic!("seal_commit failed: {:?}", msg);
+            }
+
+            assert!((*resp_d).is_valid, "proof was not valid");
+
+            destroy_write_without_alignment_response(resp_a);
+            destroy_seal_pre_commit_response(resp_b);
+            destroy_seal_commit_response(resp_c);
+            destroy_verify_seal_response(resp_d);
+
+            c_str_to_rust_str(cache_dir_path_c_str);
+            c_str_to_rust_str(staged_path_c_str);
+            c_str_to_rust_str(sealed_path_c_str);
         }
 
         Ok(())

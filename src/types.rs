@@ -3,7 +3,7 @@ use std::ptr;
 use drop_struct_macro_derive::DropStructMacro;
 // `CodeAndMessage` is the trait implemented by `code_and_message_impl`
 use ffi_toolkit::{code_and_message_impl, free_c_str, CodeAndMessage, FCPResponseStatus};
-use filecoin_proofs::{PieceInfo, UnpaddedBytesAmount};
+use filecoin_proofs::{PieceInfo, SectorClass, UnpaddedBytesAmount};
 use std::io::{Error, SeekFrom};
 
 /// FileDescriptorRef does not drop its file descriptor when it is dropped. Its
@@ -37,6 +37,36 @@ impl std::io::Write for FileDescriptorRef {
 impl std::io::Seek for FileDescriptorRef {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64, Error> {
         self.0.seek(pos)
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+pub struct FFISealPreCommitOutput {
+    pub comm_d: [u8; 32],
+    pub comm_r: [u8; 32],
+    pub p_aux_comm_c: [u8; 32],
+    pub p_aux_comm_r_last: [u8; 32],
+}
+
+#[repr(C)]
+#[derive(Clone)]
+pub struct FFISectorClass {
+    pub sector_size: u64,
+    pub porep_proof_partitions: u8,
+}
+
+impl From<FFISectorClass> for SectorClass {
+    fn from(fsc: FFISectorClass) -> Self {
+        let FFISectorClass {
+            sector_size,
+            porep_proof_partitions,
+        } = fsc;
+
+        SectorClass(
+            filecoin_proofs::SectorSize(sector_size),
+            filecoin_proofs::PoRepProofPartitions(porep_proof_partitions),
+        )
     }
 }
 
@@ -106,15 +136,17 @@ code_and_message_impl!(WriteWithoutAlignmentResponse);
 #[repr(C)]
 #[derive(DropStructMacro)]
 pub struct SealPreCommitResponse {
-    pub status_code: FCPResponseStatus,
     pub error_msg: *const libc::c_char,
+    pub status_code: FCPResponseStatus,
+    pub seal_pre_commit_output: FFISealPreCommitOutput,
 }
 
 impl Default for SealPreCommitResponse {
     fn default() -> SealPreCommitResponse {
         SealPreCommitResponse {
-            status_code: FCPResponseStatus::FCPNoError,
             error_msg: ptr::null(),
+            seal_pre_commit_output: Default::default(),
+            status_code: FCPResponseStatus::FCPNoError,
         }
     }
 }
@@ -126,6 +158,8 @@ code_and_message_impl!(SealPreCommitResponse);
 pub struct SealCommitResponse {
     pub status_code: FCPResponseStatus,
     pub error_msg: *const libc::c_char,
+    pub proof_ptr: *const u8,
+    pub proof_len: libc::size_t,
 }
 
 impl Default for SealCommitResponse {
@@ -133,6 +167,8 @@ impl Default for SealCommitResponse {
         SealCommitResponse {
             status_code: FCPResponseStatus::FCPNoError,
             error_msg: ptr::null(),
+            proof_ptr: ptr::null(),
+            proof_len: 0,
         }
     }
 }
