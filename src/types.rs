@@ -8,13 +8,13 @@ use std::io::{Error, SeekFrom};
 
 /// FileDescriptorRef does not drop its file descriptor when it is dropped. Its
 /// owner must manage the lifecycle of the file descriptor.
-pub struct FileDescriptorRef(nodrop::NoDrop<std::fs::File>);
+pub struct FileDescriptorRef(std::mem::ManuallyDrop<std::fs::File>);
 
 impl FileDescriptorRef {
     #[cfg(not(target_os = "windows"))]
     pub unsafe fn new(raw: std::os::unix::io::RawFd) -> Self {
         use std::os::unix::io::FromRawFd;
-        FileDescriptorRef(nodrop::NoDrop::new(std::fs::File::from_raw_fd(raw)))
+        FileDescriptorRef(std::mem::ManuallyDrop::new(std::fs::File::from_raw_fd(raw)))
     }
 }
 
