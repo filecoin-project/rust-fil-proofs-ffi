@@ -1,10 +1,12 @@
+use std::io::{Error, SeekFrom};
 use std::ptr;
 
 use drop_struct_macro_derive::DropStructMacro;
+use paired::bls12_381::Bls12;
 // `CodeAndMessage` is the trait implemented by `code_and_message_impl`
 use ffi_toolkit::{code_and_message_impl, free_c_str, CodeAndMessage, FCPResponseStatus};
 use filecoin_proofs::{Candidate, PieceInfo, SectorClass, UnpaddedBytesAmount};
-use std::io::{Error, SeekFrom};
+use storage_proofs::fr32::bytes_into_fr;
 
 /// FileDescriptorRef does not drop its file descriptor when it is dropped. Its
 /// owner must manage the lifecycle of the file descriptor.
@@ -96,20 +98,22 @@ pub struct FFICandidate {
     pub sector_challenge_index: u64,
 }
 
-impl From<FFICandidate> for Candidate {
-    fn from(x: FFICandidate) -> Self {
+impl FFICandidate {
+    pub fn try_into_candidate(self) -> Result<Candidate, storage_proofs::error::Error> {
         let FFICandidate {
             sector_id,
             partial_ticket,
             ticket,
             sector_challenge_index,
-        } = x;
-        Candidate {
+        } = self;
+
+        let partial_ticket_fr = bytes_into_fr::<Bls12>(&partial_ticket)?;
+        Ok(Candidate {
             sector_id: sector_id.into(),
-            partial_ticket,
+            partial_ticket: partial_ticket_fr,
             ticket,
             sector_challenge_index,
-        }
+        })
     }
 }
 

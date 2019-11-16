@@ -414,9 +414,18 @@ pub unsafe extern "C" fn finalize_ticket(partial_ticket: &[u8; 32]) -> *mut Fina
 
         info!("finalize_ticket: start");
 
-        let ticket = filecoin_proofs::finalize_ticket(partial_ticket);
         let mut response = FinalizeTicketResponse::default();
-        response.ticket = ticket;
+
+        match filecoin_proofs::finalize_ticket(partial_ticket) {
+            Ok(ticket) => {
+                response.status_code = FCPResponseStatus::FCPNoError;
+                response.ticket = ticket;
+            }
+            Err(err) => {
+                response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+                response.error_msg = rust_str_to_c_str(format!("{}", err));
+            }
+        };
 
         info!("finalize_ticket: finish");
 
@@ -467,8 +476,8 @@ pub unsafe extern "C" fn verify_post(
             let winners: Vec<Candidate> = from_raw_parts(winners_ptr, winners_len)
                 .iter()
                 .cloned()
-                .map(Into::into)
-                .collect();
+                .map(|c| c.try_into_candidate())
+                .collect::<Result<_, _>>()?;
 
             api_fns::verify_post(
                 api_types::PoStConfig(api_types::SectorSize(sector_size)),
