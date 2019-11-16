@@ -7,8 +7,8 @@ use ffi_toolkit::{
 };
 use filecoin_proofs as api_fns;
 use filecoin_proofs::{
-    types as api_types, PaddedBytesAmount, PieceInfo, PoRepConfig, PoRepProofPartitions,
-    SectorClass, SectorSize, UnpaddedByteIndex, UnpaddedBytesAmount, Winner,
+    types as api_types, Candidate, PaddedBytesAmount, PieceInfo, PoRepConfig, PoRepProofPartitions,
+    SectorClass, SectorSize, UnpaddedByteIndex, UnpaddedBytesAmount,
 };
 use libc;
 use once_cell::sync::{Lazy, OnceCell};
@@ -435,7 +435,7 @@ pub unsafe extern "C" fn verify_post(
     flattened_comm_rs_len: libc::size_t,
     flattened_proofs_ptr: *const u8,
     flattened_proofs_len: libc::size_t,
-    winners_ptr: *const FFIWinner,
+    winners_ptr: *const FFICandidate,
     winners_len: libc::size_t,
     prover_id: &[u8; 32],
 ) -> *mut VerifyPoStResponse {
@@ -464,7 +464,7 @@ pub unsafe extern "C" fn verify_post(
                 .collect();
 
             ensure!(!winners_ptr.is_null(), "winners_ptr must not be null");
-            let winners: Vec<Winner> = from_raw_parts(winners_ptr, winners_len)
+            let winners: Vec<Candidate> = from_raw_parts(winners_ptr, winners_len)
                 .iter()
                 .cloned()
                 .map(Into::into)

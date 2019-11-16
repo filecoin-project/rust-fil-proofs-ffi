@@ -3,7 +3,7 @@ use std::ptr;
 use drop_struct_macro_derive::DropStructMacro;
 // `CodeAndMessage` is the trait implemented by `code_and_message_impl`
 use ffi_toolkit::{code_and_message_impl, free_c_str, CodeAndMessage, FCPResponseStatus};
-use filecoin_proofs::{PieceInfo, SectorClass, UnpaddedBytesAmount, Winner};
+use filecoin_proofs::{Candidate, PieceInfo, SectorClass, UnpaddedBytesAmount};
 use std::io::{Error, SeekFrom};
 
 /// FileDescriptorRef does not drop its file descriptor when it is dropped. Its
@@ -89,22 +89,22 @@ impl From<FFIPublicPieceInfo> for PieceInfo {
 
 #[repr(C)]
 #[derive(Clone)]
-pub struct FFIWinner {
+pub struct FFICandidate {
     pub sector_id: u64,
     pub partial_ticket: [u8; 32],
     pub ticket: [u8; 32],
     pub sector_challenge_index: u64,
 }
 
-impl From<FFIWinner> for Winner {
-    fn from(x: FFIWinner) -> Self {
-        let FFIWinner {
+impl From<FFICandidate> for Candidate {
+    fn from(x: FFICandidate) -> Self {
+        let FFICandidate {
             sector_id,
             partial_ticket,
             ticket,
             sector_challenge_index,
         } = x;
-        Winner {
+        Candidate {
             sector_id: sector_id.into(),
             partial_ticket,
             ticket,
