@@ -301,6 +301,7 @@ pub unsafe extern "C" fn seal_commit(
 #[no_mangle]
 pub unsafe extern "C" fn unseal(
     sector_class: FFISectorClass,
+    cache_dir_path: *const libc::c_char,
     sealed_sector_path: *const libc::c_char,
     unseal_output_path: *const libc::c_char,
     sector_id: u64,
@@ -317,6 +318,7 @@ pub unsafe extern "C" fn unseal(
 
         let result = api_fns::get_unsealed_range(
             sc.into(),
+            c_str_to_pbuf(cache_dir_path),
             c_str_to_pbuf(sealed_sector_path),
             c_str_to_pbuf(unseal_output_path),
             *prover_id,
@@ -845,6 +847,7 @@ pub mod tests {
 
             let resp_e = unseal(
                 sector_class.clone(),
+                cache_dir_path_c_str,
                 sealed_path_c_str,
                 unseal_path_c_str,
                 sector_id,
