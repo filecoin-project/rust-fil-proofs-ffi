@@ -8,7 +8,7 @@ use ffi_toolkit::{
 use filecoin_proofs as api_fns;
 use filecoin_proofs::{
     types as api_types, PaddedBytesAmount, PieceInfo, PoRepConfig, PoRepProofPartitions,
-    SectorClass, SectorSize, UnpaddedByteIndex, UnpaddedBytesAmount,
+    SectorClass, SectorSize, UnpaddedByteIndex, UnpaddedBytesAmount, Winner,
 };
 use libc;
 use once_cell::sync::{Lazy, OnceCell};
@@ -406,20 +406,38 @@ pub unsafe extern "C" fn verify_seal(
     })
 }
 
+/// Finalize a partial_ticket.
+#[no_mangle]
+pub unsafe extern "C" fn finalize_ticket(partial_ticket: &[u8; 32]) -> *mut FinalizeTicketResponse {
+    catch_panic_response(|| {
+        init_log();
+
+        info!("finalize_ticket: start");
+
+        let ticket = filecoin_proofs::finalize_ticket(partial_ticket);
+        let mut response = FinalizeTicketResponse::default();
+        response.ticket = ticket;
+
+        info!("finalize_ticket: finish");
+
+        raw_ptr(response)
+    })
+}
+
 /// Verifies that a proof-of-spacetime is valid.
-///
 #[no_mangle]
 pub unsafe extern "C" fn verify_post(
     sector_size: u64,
-    challenge_seed: &[u8; 32],
+    randomness: &[u8; 32],
     sector_ids_ptr: *const u64,
     sector_ids_len: libc::size_t,
-    faulty_sector_ids_ptr: *const u64,
-    faulty_sector_ids_len: libc::size_t,
     flattened_comm_rs_ptr: *const u8,
     flattened_comm_rs_len: libc::size_t,
-    proof_ptr: *const u8,
-    proof_len: libc::size_t,
+    flattened_proofs_ptr: *const u8,
+    flattened_proofs_len: libc::size_t,
+    winners_ptr: *const FFIWinner,
+    winners_len: libc::size_t,
+    prover_id: &[u8; 32],
 ) -> *mut VerifyPoStResponse {
     catch_panic_response(|| {
         init_log();
@@ -433,18 +451,32 @@ pub unsafe extern "C" fn verify_post(
             sector_ids_len,
             flattened_comm_rs_ptr,
             flattened_comm_rs_len,
-            faulty_sector_ids_ptr,
-            faulty_sector_ids_len,
         );
 
         let result = convert.and_then(|map| {
-            ensure!(!proof_ptr.is_null(), "proof_ptr must not be null");
+            ensure!(
+                !flattened_proofs_ptr.is_null(),
+                "flattened_proof_ptr must not be null"
+            );
+            let proofs: Vec<Vec<u8>> = from_raw_parts(flattened_proofs_ptr, flattened_proofs_len)
+                .chunks(filecoin_proofs::SINGLE_PARTITION_PROOF_LEN)
+                .map(Into::into)
+                .collect();
+
+            ensure!(!winners_ptr.is_null(), "winners_ptr must not be null");
+            let winners: Vec<Winner> = from_raw_parts(winners_ptr, winners_len)
+                .iter()
+                .cloned()
+                .map(Into::into)
+                .collect();
 
             api_fns::verify_post(
                 api_types::PoStConfig(api_types::SectorSize(sector_size)),
-                challenge_seed,
-                from_raw_parts(proof_ptr, proof_len),
+                randomness,
+                &proofs,
                 &map,
+                &winners,
+                *prover_id,
             )
         });
 
