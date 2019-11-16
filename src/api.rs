@@ -631,6 +631,11 @@ pub unsafe extern "C" fn destroy_verify_seal_response(ptr: *mut VerifySealRespon
     let _ = Box::from_raw(ptr);
 }
 
+#[no_mangle]
+pub unsafe extern "C" fn destroy_finalize_ticket_response(ptr: *mut FinalizeTicketResponse) {
+    let _ = Box::from_raw(ptr);
+}
+
 /// Deallocates a VerifyPoStResponse.
 ///
 #[no_mangle]
