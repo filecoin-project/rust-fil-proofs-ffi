@@ -14,9 +14,9 @@ crate-type = ["rlib", "staticlib"]
 
 [dependencies]
 # FIXME: This should be master branch or a version
-filecoin-proofs = { git = "https://github.com/filecoin-project/rust-fil-proofs.git", rev = "b7e29a5e739df3235823e16cd8e4ee1a1089d14a" }
+filecoin-proofs = { git = "https://github.com/filecoin-project/rust-fil-proofs.git", rev = "b0b3eb69de0d360343bc2697ca5175d8fbef8eef" }
 # FIXME: This should be master branch or a version
-storage-proofs = { git = "https://github.com/filecoin-project/rust-fil-proofs.git", rev = "b7e29a5e739df3235823e16cd8e4ee1a1089d14a" }
+storage-proofs = { git = "https://github.com/filecoin-project/rust-fil-proofs.git", rev = "b0b3eb69de0d360343bc2697ca5175d8fbef8eef" }
 ffi-toolkit = "0.4.0"
 failure = "0.1.5"
 drop_struct_macro_derive = "0.4.0"
