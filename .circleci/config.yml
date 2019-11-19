@@ -5,6 +5,10 @@ jobs:
       - image: filecoin/rust:latest
     working_directory: /mnt/crate
     resource_class: 2xlarge+
+    parameters:
+      sector_sizes:
+        type: string
+        default: "1024,"
     steps:
       - configure_env
       - install_rust
@@ -16,7 +20,7 @@ jobs:
       - restore_parameter_cache
       - run:
           name: Generate Groth parameters and verifying keys
-          command: paramcache
+          command: paramcache --params-for-sector-sizes=<< parameters.sector_sizes >>
           no_output_timeout: 1h
       - save_parameter_cache
   cargo_fetch:
@@ -162,7 +166,8 @@ workflows:
   version: 2
   test_all:
     jobs:
-      - obtain_parameters
+      - obtain_parameters:
+          sector_sizes: "1024,1024"
       - cargo_fetch
       - rustfmt:
           requires:
