@@ -20,9 +20,6 @@ use crate::types::*;
 use std::mem;
 use storage_proofs::hasher::pedersen::PedersenDomain;
 
-static TEMPORAY_AUX_MAP: Lazy<Mutex<HashMap<u64, api_types::TemporaryAux>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
-
 /// TODO: document
 ///
 #[no_mangle]
@@ -154,33 +151,10 @@ pub unsafe extern "C" fn seal_pre_commit(
                 response.status_code = FCPResponseStatus::FCPNoError;
 
                 let mut x: FFISealPreCommitOutput = Default::default();
-                x.p_aux_comm_c
-                    .copy_from_slice(&output.p_aux.comm_c.into_bytes());
-                x.p_aux_comm_r_last
-                    .copy_from_slice(&output.p_aux.comm_r_last.into_bytes());
                 x.comm_r = output.comm_r;
                 x.comm_d = output.comm_d;
 
                 response.seal_pre_commit_output = x;
-
-                let warning = "Until the merkle cache is complete, \
-                               seal_pre_commit puts TemporaryAux in a \
-                               heap-allocated, global, in-memory lookup table. \
-                               If this process is killed before seal_commit is \
-                               called, TemporaryAux (and the sector) will be \
-                               lost. Also, seal_commit must be called from the \
-                               same process which called seal_pre_commit.";
-
-                warn!(
-                    "seal_pre_commit warning for sector id = {:?}: {:?}",
-                    sector_id, warning
-                );
-
-                let mut aux_map = TEMPORAY_AUX_MAP
-                    .lock()
-                    .expect("error acquiring TemporaryAux mutex");
-
-                let _ = aux_map.insert(sector_id, output.t_aux);
             }
             Err(err) => {
                 response.status_code = FCPResponseStatus::FCPUnclassifiedError;
@@ -215,26 +189,8 @@ pub unsafe extern "C" fn seal_commit(
 
         let mut response = SealCommitResponse::default();
 
-        let t_aux = {
-            let mut aux_map = TEMPORAY_AUX_MAP
-                .lock()
-                .expect("error acquiring TemporaryAux mutex");
-
-            aux_map.remove(&sector_id)
-        };
-
         let comm_r_last = PedersenDomain::try_from_bytes(&spco.p_aux_comm_r_last[..]);
         let comm_c = PedersenDomain::try_from_bytes(&spco.p_aux_comm_c[..]);
-
-        if t_aux.is_none() {
-            response.status_code = FCPResponseStatus::FCPUnclassifiedError;
-            response.error_msg = rust_str_to_c_str(format!(
-                "no TemporaryAux in map for sector id={:?} - has it ben pre-committed yet?",
-                sector_id
-            ));
-            info!("seal_commit: finish");
-            return raw_ptr(response);
-        }
 
         if comm_r_last.is_err() {
             response.status_code = FCPResponseStatus::FCPUnclassifiedError;
@@ -253,11 +209,6 @@ pub unsafe extern "C" fn seal_commit(
         let spco = api_types::SealPreCommitOutput {
             comm_r: spco.comm_r,
             comm_d: spco.comm_d,
-            p_aux: api_types::PersistentAux {
-                comm_c: comm_c.unwrap(),
-                comm_r_last: comm_r_last.unwrap(),
-            },
-            t_aux: t_aux.unwrap(),
         };
 
         let public_pieces: Vec<PieceInfo> = from_raw_parts(pieces_ptr, pieces_len)
