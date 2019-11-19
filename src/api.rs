@@ -1,6 +1,4 @@
-use std::collections::HashMap;
 use std::slice::from_raw_parts;
-use std::sync::Mutex;
 
 use ffi_toolkit::{
     c_str_to_pbuf, catch_panic_response, raw_ptr, rust_str_to_c_str, FCPResponseStatus,
@@ -11,7 +9,7 @@ use filecoin_proofs::{
     SectorClass, SectorSize, UnpaddedByteIndex, UnpaddedBytesAmount,
 };
 use libc;
-use once_cell::sync::{Lazy, OnceCell};
+use once_cell::sync::OnceCell;
 use storage_proofs::hasher::Domain;
 use storage_proofs::sector::SectorId;
 
