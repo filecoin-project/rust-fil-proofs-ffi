@@ -4,9 +4,11 @@ use std::slice::from_raw_parts;
 use filecoin_proofs::types as api_types;
 use filecoin_proofs::{constants as api_constants, Commitment, PublicReplicaInfo};
 use libc;
+use paired::bls12_381::{Bls12, Fr};
+use storage_proofs::fr32::fr_into_bytes;
+use storage_proofs::sector::SectorId;
 
 use crate::error::Result;
-use storage_proofs::sector::SectorId;
 
 /// Produce a map from sector id to replica info by pairing sector ids and
 /// replica commitments (by index in their respective arrays), setting the
@@ -120,4 +122,12 @@ unsafe fn into_proof_vecs(
         });
 
     Ok(res)
+}
+
+pub fn bls_12_fr_into_bytes(fr: Fr) -> [u8; 32] {
+    let mut commitment = [0; 32];
+    for (i, b) in fr_into_bytes::<Bls12>(&fr).iter().enumerate() {
+        commitment[i] = *b;
+    }
+    commitment
 }

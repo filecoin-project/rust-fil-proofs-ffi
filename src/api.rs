@@ -1,22 +1,25 @@
+use std::collections::btree_map::BTreeMap;
+use std::mem;
 use std::slice::from_raw_parts;
 
 use ffi_toolkit::{
-    c_str_to_pbuf, catch_panic_response, raw_ptr, rust_str_to_c_str, FCPResponseStatus,
+    c_str_to_pbuf, c_str_to_rust_str, catch_panic_response, raw_ptr, rust_str_to_c_str,
+    FCPResponseStatus,
 };
 use filecoin_proofs as api_fns;
 use filecoin_proofs::{
     types as api_types, Candidate, PaddedBytesAmount, PieceInfo, PoRepConfig, PoRepProofPartitions,
-    SectorClass, SectorSize, UnpaddedByteIndex, UnpaddedBytesAmount,
+    PoStConfig, SectorClass, SectorSize, UnpaddedByteIndex, UnpaddedBytesAmount,
 };
 use libc;
 use once_cell::sync::OnceCell;
+use storage_proofs::hasher::pedersen::PedersenDomain;
 use storage_proofs::hasher::Domain;
 use storage_proofs::sector::SectorId;
 
 use crate::helpers;
+use crate::helpers::bls_12_fr_into_bytes;
 use crate::types::*;
-use std::mem;
-use storage_proofs::hasher::pedersen::PedersenDomain;
 
 /// TODO: document
 ///
@@ -531,6 +534,80 @@ pub unsafe extern "C" fn generate_data_commitment(
                 response.error_msg = rust_str_to_c_str(format!("{}", err));
             }
         }
+
+        raw_ptr(response)
+    })
+}
+
+/// TODO: document
+///
+#[no_mangle]
+pub unsafe extern "C" fn generate_candidates(
+    sector_size: u64,
+    randomness: &[u8; 32],
+    challenge_count: u64,
+    replicas_ptr: *const FFIPrivateReplicaInfo,
+    replicas_len: libc::size_t,
+    prover_id: &[u8; 32],
+) -> *mut GenerateCandidatesResponse {
+    catch_panic_response(|| {
+        init_log();
+
+        info!("generate_candidates: start");
+
+        let mut response = GenerateCandidatesResponse::default();
+
+        let replicas_result: Result<
+            BTreeMap<SectorId, filecoin_proofs::PrivateReplicaInfo>,
+            failure::Error,
+        > = from_raw_parts(replicas_ptr, replicas_len)
+            .iter()
+            .cloned()
+            .map(|ffi_r| {
+                filecoin_proofs::PrivateReplicaInfo::new(
+                    c_str_to_rust_str(ffi_r.replica_path).to_string(),
+                    ffi_r.comm_r,
+                    c_str_to_pbuf(ffi_r.cache_dir_path),
+                )
+                .map_err(|err| format_err!("could not load private replica from cache: {}", err))
+                .map(|p| (SectorId::from(ffi_r.sector_id), p))
+            })
+            .collect();
+
+        let candidates_result = replicas_result.and_then(|rs| {
+            api_fns::generate_candidates(
+                PoStConfig(SectorSize(sector_size)),
+                randomness,
+                challenge_count,
+                &rs,
+                *prover_id,
+            )
+        });
+
+        match candidates_result {
+            Ok(output) => {
+                let mapped: Vec<FFICandidate> = output
+                    .iter()
+                    .map(|x| FFICandidate {
+                        sector_id: x.sector_id.into(),
+                        partial_ticket: bls_12_fr_into_bytes(x.partial_ticket),
+                        ticket: x.ticket,
+                        sector_challenge_index: x.sector_challenge_index,
+                    })
+                    .collect();
+
+                response.status_code = FCPResponseStatus::FCPNoError;
+                response.candidates_ptr = mapped.as_ptr();
+                response.candidates_len = mapped.len();
+                mem::forget(mapped);
+            }
+            Err(err) => {
+                response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+                response.error_msg = rust_str_to_c_str(format!("{}", err));
+            }
+        }
+
+        info!("generate_candidates: finish");
 
         raw_ptr(response)
     })

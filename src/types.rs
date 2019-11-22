@@ -118,6 +118,37 @@ impl FFICandidate {
 }
 
 #[repr(C)]
+#[derive(Clone)]
+pub struct FFIPrivateReplicaInfo {
+    pub cache_dir_path: *const libc::c_char,
+    pub comm_r: [u8; 32],
+    pub replica_path: *const libc::c_char,
+    pub sector_id: u64,
+}
+
+#[repr(C)]
+#[derive(DropStructMacro)]
+pub struct GenerateCandidatesResponse {
+    pub error_msg: *const libc::c_char,
+    pub status_code: FCPResponseStatus,
+    pub candidates_ptr: *const FFICandidate,
+    pub candidates_len: libc::size_t,
+}
+
+impl Default for GenerateCandidatesResponse {
+    fn default() -> GenerateCandidatesResponse {
+        GenerateCandidatesResponse {
+            candidates_len: 0,
+            candidates_ptr: ptr::null(),
+            error_msg: ptr::null(),
+            status_code: FCPResponseStatus::FCPNoError,
+        }
+    }
+}
+
+code_and_message_impl!(GenerateCandidatesResponse);
+
+#[repr(C)]
 #[derive(DropStructMacro)]
 pub struct WriteWithAlignmentResponse {
     pub comm_p: [u8; 32],
