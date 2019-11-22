@@ -1,14 +1,12 @@
-use std::collections::btree_map::BTreeMap;
 use std::mem;
 use std::slice::from_raw_parts;
 
 use ffi_toolkit::{
-    c_str_to_pbuf, c_str_to_rust_str, catch_panic_response, raw_ptr, rust_str_to_c_str,
-    FCPResponseStatus,
+    c_str_to_pbuf, catch_panic_response, raw_ptr, rust_str_to_c_str, FCPResponseStatus,
 };
 use filecoin_proofs as api_fns;
 use filecoin_proofs::{
-    types as api_types, Candidate, PaddedBytesAmount, PieceInfo, PoRepConfig, PoRepProofPartitions,
+    types as api_types, PaddedBytesAmount, PieceInfo, PoRepConfig, PoRepProofPartitions,
     PoStConfig, SectorClass, SectorSize, UnpaddedByteIndex, UnpaddedBytesAmount,
 };
 use libc;
@@ -18,7 +16,9 @@ use storage_proofs::hasher::Domain;
 use storage_proofs::sector::SectorId;
 
 use crate::helpers;
-use crate::helpers::bls_12_fr_into_bytes;
+use crate::helpers::{
+    bls_12_fr_into_bytes, c_to_rust_candidates, c_to_rust_proofs, to_private_replica_info_map,
+};
 use crate::types::*;
 
 /// TODO: document
@@ -418,21 +418,8 @@ pub unsafe extern "C" fn verify_post(
         );
 
         let result = convert.and_then(|map| {
-            ensure!(
-                !flattened_proofs_ptr.is_null(),
-                "flattened_proof_ptr must not be null"
-            );
-            let proofs: Vec<Vec<u8>> = from_raw_parts(flattened_proofs_ptr, flattened_proofs_len)
-                .chunks(filecoin_proofs::SINGLE_PARTITION_PROOF_LEN)
-                .map(Into::into)
-                .collect();
-
-            ensure!(!winners_ptr.is_null(), "winners_ptr must not be null");
-            let winners: Vec<Candidate> = from_raw_parts(winners_ptr, winners_len)
-                .iter()
-                .cloned()
-                .map(|c| c.try_into_candidate())
-                .collect::<Result<_, _>>()?;
+            let proofs = c_to_rust_proofs(flattened_proofs_ptr, flattened_proofs_len)?;
+            let winners = c_to_rust_candidates(winners_ptr, winners_len)?;
 
             api_fns::verify_post(
                 api_types::PoStConfig(api_types::SectorSize(sector_size)),
@@ -557,24 +544,7 @@ pub unsafe extern "C" fn generate_candidates(
 
         let mut response = GenerateCandidatesResponse::default();
 
-        let replicas_result: Result<
-            BTreeMap<SectorId, filecoin_proofs::PrivateReplicaInfo>,
-            failure::Error,
-        > = from_raw_parts(replicas_ptr, replicas_len)
-            .iter()
-            .cloned()
-            .map(|ffi_r| {
-                filecoin_proofs::PrivateReplicaInfo::new(
-                    c_str_to_rust_str(ffi_r.replica_path).to_string(),
-                    ffi_r.comm_r,
-                    c_str_to_pbuf(ffi_r.cache_dir_path),
-                )
-                .map_err(|err| format_err!("could not load private replica from cache: {}", err))
-                .map(|p| (SectorId::from(ffi_r.sector_id), p))
-            })
-            .collect();
-
-        let candidates_result = replicas_result.and_then(|rs| {
+        let result = to_private_replica_info_map(replicas_ptr, replicas_len).and_then(|rs| {
             api_fns::generate_candidates(
                 PoStConfig(SectorSize(sector_size)),
                 randomness,
@@ -584,7 +554,7 @@ pub unsafe extern "C" fn generate_candidates(
             )
         });
 
-        match candidates_result {
+        match result {
             Ok(output) => {
                 let mapped: Vec<FFICandidate> = output
                     .iter()
@@ -608,6 +578,58 @@ pub unsafe extern "C" fn generate_candidates(
         }
 
         info!("generate_candidates: finish");
+
+        raw_ptr(response)
+    })
+}
+
+/// TODO: document
+///
+#[no_mangle]
+pub unsafe extern "C" fn generate_post(
+    sector_size: u64,
+    randomness: &[u8; 32],
+    replicas_ptr: *const FFIPrivateReplicaInfo,
+    replicas_len: libc::size_t,
+    winners_ptr: *const FFICandidate,
+    winners_len: libc::size_t,
+    prover_id: &[u8; 32],
+) -> *mut GeneratePoStResponse {
+    catch_panic_response(|| {
+        init_log();
+
+        info!("generate_post: start");
+
+        let mut response = GeneratePoStResponse::default();
+
+        let result = to_private_replica_info_map(replicas_ptr, replicas_len).and_then(|rs| {
+            api_fns::generate_post(
+                PoStConfig(SectorSize(sector_size)),
+                randomness,
+                &rs,
+                c_to_rust_candidates(winners_ptr, winners_len)?,
+                *prover_id,
+            )
+        });
+
+        match result {
+            Ok(proof) => {
+                response.status_code = FCPResponseStatus::FCPNoError;
+
+                let flattened_proofs: Vec<u8> = proof.into_iter().flatten().collect();
+
+                response.flattened_proofs_len = flattened_proofs.len();
+                response.flattened_proofs_ptr = flattened_proofs.as_ptr();
+
+                mem::forget(flattened_proofs);
+            }
+            Err(err) => {
+                response.status_code = FCPResponseStatus::FCPUnclassifiedError;
+                response.error_msg = rust_str_to_c_str(format!("{}", err));
+            }
+        }
+
+        info!("generate_post: finish");
 
         raw_ptr(response)
     })

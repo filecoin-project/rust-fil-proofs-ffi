@@ -150,6 +150,28 @@ code_and_message_impl!(GenerateCandidatesResponse);
 
 #[repr(C)]
 #[derive(DropStructMacro)]
+pub struct GeneratePoStResponse {
+    pub error_msg: *const libc::c_char,
+    pub flattened_proofs_len: libc::size_t,
+    pub flattened_proofs_ptr: *const u8,
+    pub status_code: FCPResponseStatus,
+}
+
+impl Default for GeneratePoStResponse {
+    fn default() -> GeneratePoStResponse {
+        GeneratePoStResponse {
+            error_msg: ptr::null(),
+            flattened_proofs_len: 0,
+            flattened_proofs_ptr: ptr::null(),
+            status_code: FCPResponseStatus::FCPNoError,
+        }
+    }
+}
+
+code_and_message_impl!(GeneratePoStResponse);
+
+#[repr(C)]
+#[derive(DropStructMacro)]
 pub struct WriteWithAlignmentResponse {
     pub comm_p: [u8; 32],
     pub error_msg: *const libc::c_char,
