@@ -56,6 +56,7 @@ pub struct FFISealPreCommitOutput {
 pub struct FFISectorClass {
     pub sector_size: u64,
     pub porep_proof_partitions: u8,
+    pub window_size_nodes: usize,
 }
 
 impl From<FFISectorClass> for SectorClass {
@@ -63,12 +64,14 @@ impl From<FFISectorClass> for SectorClass {
         let FFISectorClass {
             sector_size,
             porep_proof_partitions,
+            window_size_nodes,
         } = fsc;
 
-        SectorClass(
-            filecoin_proofs::SectorSize(sector_size),
-            filecoin_proofs::PoRepProofPartitions(porep_proof_partitions),
-        )
+        SectorClass {
+            sector_size: filecoin_proofs::SectorSize(sector_size),
+            partitions: filecoin_proofs::PoRepProofPartitions(porep_proof_partitions),
+            window_size_nodes,
+        }
     }
 }
 
@@ -99,7 +102,7 @@ pub struct FFICandidate {
 }
 
 impl FFICandidate {
-    pub fn try_into_candidate(self) -> Result<Candidate, storage_proofs::error::Error> {
+    pub fn try_into_candidate(self) -> Result<Candidate, anyhow::Error> {
         let FFICandidate {
             sector_id,
             partial_ticket,

@@ -1,6 +1,8 @@
 use std::collections::btree_map::BTreeMap;
 use std::slice::from_raw_parts;
 
+use anyhow::{anyhow, ensure, Context, Result};
+
 use ffi_toolkit::{c_str_to_pbuf, c_str_to_rust_str};
 use filecoin_proofs::{constants as api_constants, Commitment, PublicReplicaInfo};
 use filecoin_proofs::{types as api_types, PrivateReplicaInfo};
@@ -9,7 +11,6 @@ use paired::bls12_381::{Bls12, Fr};
 use storage_proofs::fr32::fr_into_bytes;
 use storage_proofs::sector::SectorId;
 
-use crate::error::Result;
 use crate::types::{FFICandidate, FFIPrivateReplicaInfo};
 use storage_proofs::election_post::Candidate;
 
@@ -63,7 +64,7 @@ pub unsafe fn try_into_porep_proof_bytes(
     into_proof_vecs(proof_len, proof_ptr, proof_len)?
         .first()
         .map(Vec::clone)
-        .ok_or_else(|| format_err!("no proofs in chunked vec"))
+        .context("no proofs in chunked vec")
 }
 
 /// Splits the flattened, dynamic array of CommR bytes into a vector of
@@ -153,12 +154,11 @@ pub unsafe fn to_private_replica_info_map(
                 ffi_r.comm_r,
                 cache_dir_path,
             )
-            .map_err(|err| {
-                format_err!(
-                    "could not load private replica (id = {}) from cache (path = {:?}): {}",
+            .map_err(|_| {
+                anyhow!(
+                    "could not load private replica (id = {}) from cache (path = {:?})",
                     ffi_r.sector_id,
-                    cloned,
-                    err
+                    cloned
                 )
             })
             .map(|p| (SectorId::from(ffi_r.sector_id), p))
