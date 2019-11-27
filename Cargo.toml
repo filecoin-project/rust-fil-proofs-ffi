@@ -9,6 +9,9 @@ readme = "README.md"
 edition = "2018"
 publish = false
 
+[badges]
+maintenance = { status = "deprecated" }
+
 [lib]
 crate-type = ["rlib", "staticlib"]
 
